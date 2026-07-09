@@ -3,6 +3,7 @@
 import { Loader2, Upload } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { ChatPanel } from "@/components/chat/ChatPanel";
 import { SourceSearch } from "@/components/search/SourceSearch";
 import { SirDeckViewer, type BrowserSirDeck } from "@/components/sir/SirDeckViewer";
 import { SlideList } from "@/components/sir/SlideList";
@@ -175,11 +176,19 @@ export function SirUpload() {
         ) : null}
       </aside>
 
-      <SirDeckViewer
-        deck={deck}
-        isLoading={isLoading}
-        selectedSlideNumber={selectedSlideNumber}
-      />
+      <div className="flex min-w-0 flex-col gap-4">
+        <SirDeckViewer
+          deck={deck}
+          isLoading={isLoading}
+          selectedSlideNumber={selectedSlideNumber}
+        />
+        {deck ? (
+          <ChatPanel
+            sourceChunks={sourceChunks}
+            onSelectSlide={setSelectedSlideNumber}
+          />
+        ) : null}
+      </div>
     </div>
   );
 }
