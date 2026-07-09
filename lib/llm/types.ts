@@ -7,10 +7,8 @@ export interface LlmMessage {
   content: string;
 }
 
-export interface ProviderSettings {
-  baseUrl: string;
+export interface DeepInfraSettings {
   apiKey: string;
-  model: string;
 }
 
 export interface GroundedPromptInput {
@@ -22,6 +20,7 @@ export interface ChatCompletionRequest {
   model: string;
   messages: LlmMessage[];
   temperature: number;
+  reasoning_effort?: "low" | "medium" | "high";
 }
 
 export interface ChatCompletionResult {

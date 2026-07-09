@@ -169,6 +169,7 @@ export function AppShell() {
         decks={decks}
         sourceChunks={sourceChunks}
         selectedSource={selectedSource}
+        onSelectSource={setSelectedSource}
       />
     </main>
   );

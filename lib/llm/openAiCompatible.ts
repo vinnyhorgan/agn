@@ -1,9 +1,12 @@
 import type {
   ChatCompletionRequest,
   ChatCompletionResult,
+  DeepInfraSettings,
   LlmMessage,
-  ProviderSettings,
 } from "@/lib/llm/types";
+
+export const DEEPINFRA_BASE_URL = "https://api.deepinfra.com/v1/openai";
+export const DEEPINFRA_MODEL = "deepseek-ai/DeepSeek-V4-Flash";
 
 interface OpenAiCompatibleResponse {
   choices?: Array<{
@@ -16,36 +19,34 @@ interface OpenAiCompatibleResponse {
   };
 }
 
-export async function createOpenAiCompatibleChatCompletion({
+export class DeepInfraAuthenticationError extends Error {
+  constructor() {
+    super("DeepInfra rejected this API key. Check that it is valid and has access.");
+    this.name = "DeepInfraAuthenticationError";
+  }
+}
+
+export async function createDeepInfraChatCompletion({
   settings,
   messages,
 }: {
-  settings: ProviderSettings;
+  settings: DeepInfraSettings;
   messages: LlmMessage[];
 }): Promise<ChatCompletionResult> {
-  const baseUrl = settings.baseUrl.trim().replace(/\/+$/, "");
-  const model = settings.model.trim();
   const apiKey = settings.apiKey.trim();
 
-  if (!baseUrl) {
-    throw new Error("Enter a provider base URL.");
-  }
-
-  if (!model) {
-    throw new Error("Enter a model name.");
-  }
-
   if (!apiKey) {
-    throw new Error("Enter an API key.");
+    throw new Error("Add a valid DeepInfra API key before chatting.");
   }
 
   const body: ChatCompletionRequest = {
-    model,
+    model: DEEPINFRA_MODEL,
     messages,
     temperature: 0.2,
+    reasoning_effort: "high",
   };
 
-  const response = await fetch(`${baseUrl}/chat/completions`, {
+  const response = await fetch(`${DEEPINFRA_BASE_URL}/chat/completions`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -57,19 +58,23 @@ export async function createOpenAiCompatibleChatCompletion({
   const payload = (await readJsonResponse(response)) as OpenAiCompatibleResponse;
 
   if (!response.ok) {
+    if (response.status === 401 || response.status === 403) {
+      throw new DeepInfraAuthenticationError();
+    }
+
     const providerMessage =
       typeof payload.error?.message === "string" ? payload.error.message : "";
     throw new Error(
       providerMessage
-        ? `Provider request failed (${response.status}): ${providerMessage}`
-        : `Provider request failed with status ${response.status}.`,
+        ? `DeepInfra request failed (${response.status}): ${providerMessage}`
+        : `DeepInfra request failed with status ${response.status}.`,
     );
   }
 
   const content = payload.choices?.[0]?.message?.content;
 
   if (typeof content !== "string" || content.trim().length === 0) {
-    throw new Error("Provider response did not include an assistant message.");
+    throw new Error("DeepInfra response did not include an assistant message.");
   }
 
   return {
@@ -88,9 +93,13 @@ async function readJsonResponse(response: Response): Promise<unknown> {
     return JSON.parse(text);
   } catch {
     if (!response.ok) {
-      throw new Error(`Provider request failed with status ${response.status}.`);
+      if (response.status === 401 || response.status === 403) {
+        throw new DeepInfraAuthenticationError();
+      }
+
+      throw new Error(`DeepInfra request failed with status ${response.status}.`);
     }
 
-    throw new Error("Provider response was not valid JSON.");
+    throw new Error("DeepInfra response was not valid JSON.");
   }
 }

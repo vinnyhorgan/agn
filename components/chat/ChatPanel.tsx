@@ -8,8 +8,8 @@ import { ProviderSettings } from "@/components/chat/ProviderSettings";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { buildGroundedMessages } from "@/lib/llm/groundedPrompt";
-import { createOpenAiCompatibleChatCompletion } from "@/lib/llm/openAiCompatible";
-import type { ProviderSettings as ProviderSettingsValue } from "@/lib/llm/types";
+import { createDeepInfraChatCompletion } from "@/lib/llm/openAiCompatible";
+import type { DeepInfraSettings } from "@/lib/llm/types";
 import { lexicalSearch } from "@/lib/search/lexicalSearch";
 import type { SourceChunk } from "@/lib/search/types";
 import { cn } from "@/lib/utils";
@@ -34,12 +34,11 @@ interface ChatTurn {
 }
 
 const retrievalLimit = 6;
-const defaultProviderSettings: ProviderSettingsValue = {
-  baseUrl: "https://openrouter.ai/api/v1",
+const defaultDeepInfraSettings: DeepInfraSettings = {
   apiKey: "",
-  model: "openai/gpt-4.1-mini",
 };
 
+const missingApiKeyMessage = "Add a valid DeepInfra API key before chatting.";
 const noSourceAnswer =
   "I could not find relevant support for that in the uploaded SIR sources, so I cannot answer it from the current knowledge base.";
 
@@ -49,8 +48,8 @@ export function ChatPanel({
   onSelectSource,
   onSelectSlide,
 }: ChatPanelProps) {
-  const [settings, setSettings] = useState<ProviderSettingsValue>(
-    defaultProviderSettings,
+  const [settings, setSettings] = useState<DeepInfraSettings>(
+    defaultDeepInfraSettings,
   );
   const [question, setQuestion] = useState("");
   const [turns, setTurns] = useState<ChatTurn[]>([]);
@@ -65,6 +64,11 @@ export function ChatPanel({
     const trimmedQuestion = question.trim();
 
     if (!trimmedQuestion || isLoading || !hasSources) {
+      return;
+    }
+
+    if (!settings.apiKey.trim()) {
+      setError(missingApiKeyMessage);
       return;
     }
 
@@ -98,7 +102,7 @@ export function ChatPanel({
         question: trimmedQuestion,
         sourceChunks: sources,
       });
-      const response = await createOpenAiCompatibleChatCompletion({
+      const response = await createDeepInfraChatCompletion({
         settings,
         messages,
       });
@@ -117,7 +121,7 @@ export function ChatPanel({
       setError(
         chatError instanceof Error
           ? chatError.message
-          : "Could not complete the provider request.",
+          : "Could not complete the DeepInfra request.",
       );
     } finally {
       setIsLoading(false);
@@ -141,7 +145,7 @@ export function ChatPanel({
             Source-grounded chat
           </h1>
           <p className="truncate text-xs text-zinc-500">
-            Answers use retrieved SIR chunks only.
+            DeepInfra answers use retrieved SIR chunks only.
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">

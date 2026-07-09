@@ -1,13 +1,17 @@
 "use client";
 
-import { FileText, Loader2, Upload } from "lucide-react";
-import { useRef } from "react";
+import { Check, Copy, FileText, Loader2, Sparkles, Upload, X } from "lucide-react";
+import { useRef, useState } from "react";
 
 import { SourceSearch } from "@/components/sources/SourceSearch";
 import type { BrowserSirDeck, SelectedSource } from "@/components/sources/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { SearchResult } from "@/lib/search/types";
+import {
+  sirGenerationPrompt,
+  sirGenerationWorkflowSteps,
+} from "@/lib/sir/sirGenerationPrompt";
 import type { SirValidationError } from "@/lib/sir/types";
 import { cn } from "@/lib/utils";
 
@@ -37,6 +41,7 @@ export function SourceSidebar({
   onSelectSource,
 }: SourceSidebarProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isGenerateSirOpen, setIsGenerateSirOpen] = useState(false);
 
   function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
     onUploadFiles(event.target.files);
@@ -64,20 +69,29 @@ export function SourceSidebar({
           disabled={isLoading}
           onChange={handleFileChange}
         />
-        <Button
-          type="button"
-          variant="secondary"
-          className="mt-4 w-full"
-          disabled={isLoading}
-          onClick={() => fileInputRef.current?.click()}
-        >
-          {isLoading ? (
-            <Loader2 className="animate-spin" aria-hidden="true" />
-          ) : (
-            <Upload aria-hidden="true" />
-          )}
-          Upload .sir
-        </Button>
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={isLoading}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            {isLoading ? (
+              <Loader2 className="animate-spin" aria-hidden="true" />
+            ) : (
+              <Upload aria-hidden="true" />
+            )}
+            Upload .sir
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setIsGenerateSirOpen(true)}
+          >
+            <Sparkles aria-hidden="true" />
+            Generate SIR
+          </Button>
+        </div>
       </div>
 
       <div className="min-h-0 overflow-y-auto px-3 py-3">
@@ -151,7 +165,102 @@ export function SourceSidebar({
         onQueryChange={onSearchQueryChange}
         onSelectSource={onSelectSource}
       />
+      {isGenerateSirOpen ? (
+        <GenerateSirDialog onClose={() => setIsGenerateSirOpen(false)} />
+      ) : null}
     </aside>
+  );
+}
+
+function GenerateSirDialog({ onClose }: { onClose: () => void }) {
+  const [didCopy, setDidCopy] = useState(false);
+
+  async function copyPrompt() {
+    await navigator.clipboard.writeText(sirGenerationPrompt);
+    setDidCopy(true);
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) {
+          onClose();
+        }
+      }}
+    >
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="generate-sir-title"
+        className="flex max-h-[min(760px,calc(100dvh-2rem))] w-full max-w-2xl flex-col rounded-lg border border-zinc-800 bg-zinc-950 shadow-2xl"
+      >
+        <header className="flex items-start justify-between gap-3 border-b border-zinc-800 px-4 py-3">
+          <div className="min-w-0">
+            <h2
+              id="generate-sir-title"
+              className="text-base font-semibold text-zinc-50"
+            >
+              Generate SIR
+            </h2>
+            <p className="mt-1 text-sm leading-6 text-zinc-500">
+              Use ChatGPT to compile PDF slide decks into AGN-compatible SIR
+              files.
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label="Close Generate SIR"
+            onClick={onClose}
+          >
+            <X aria-hidden="true" />
+          </Button>
+        </header>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+          <ol className="space-y-2 text-sm leading-6 text-zinc-300">
+            {sirGenerationWorkflowSteps.map((step, index) => (
+              <li key={step} className="flex gap-2">
+                <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border border-zinc-700 text-xs text-zinc-400">
+                  {index + 1}
+                </span>
+                <span>{step}</span>
+              </li>
+            ))}
+          </ol>
+
+          <label
+            htmlFor="sir-generation-prompt"
+            className="mt-4 block text-xs font-semibold uppercase tracking-normal text-zinc-500"
+          >
+            SIR compiler prompt
+          </label>
+          <textarea
+            id="sir-generation-prompt"
+            readOnly
+            value={sirGenerationPrompt}
+            className="mt-2 h-72 w-full resize-none rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 font-mono text-xs leading-5 text-zinc-200 outline-none focus-visible:border-zinc-600 focus-visible:ring-3 focus-visible:ring-zinc-700/50"
+          />
+        </div>
+
+        <footer className="flex items-center justify-between gap-3 border-t border-zinc-800 px-4 py-3">
+          <p className="text-xs text-zinc-500">
+            The prompt enforces the current SIR v1 structure.
+          </p>
+          <Button type="button" variant="secondary" onClick={copyPrompt}>
+            {didCopy ? (
+              <Check aria-hidden="true" />
+            ) : (
+              <Copy aria-hidden="true" />
+            )}
+            {didCopy ? "Copied" : "Copy prompt"}
+          </Button>
+        </footer>
+      </section>
+    </div>
   );
 }
 

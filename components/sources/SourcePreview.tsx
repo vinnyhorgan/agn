@@ -1,22 +1,26 @@
 "use client";
 
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import type { BrowserSirDeck, SelectedSource } from "@/components/sources/types";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import type { SourceChunk } from "@/lib/search/types";
 
 interface SourcePreviewProps {
   decks: BrowserSirDeck[];
   sourceChunks: SourceChunk[];
   selectedSource?: SelectedSource;
+  onSelectSource: (source: SelectedSource) => void;
 }
 
 export function SourcePreview({
   decks,
   sourceChunks,
   selectedSource,
+  onSelectSource,
 }: SourcePreviewProps) {
   const deck = selectedSource
     ? decks.find((candidate) => candidate.id === selectedSource.deckId)
@@ -29,6 +33,14 @@ export function SourcePreview({
     selectedSource?.chunkId !== undefined
       ? sourceChunks.find((chunk) => chunk.id === selectedSource.chunkId)
       : undefined;
+  const slideIndex =
+    deck && slide
+      ? deck.slides.findIndex(
+          (candidate) => candidate.slideNumber === slide.slideNumber,
+        )
+      : -1;
+  const isFirstSlide = slideIndex <= 0;
+  const isLastSlide = deck ? slideIndex >= deck.slides.length - 1 : true;
   const fallbackChunk = slide
     ? sourceChunks.find(
         (chunk) =>
@@ -39,6 +51,23 @@ export function SourcePreview({
   const imageUrl = slide
     ? deck?.imageUrlsBySlideNumber[slide.slideNumber]
     : undefined;
+
+  function selectSlideByOffset(offset: number) {
+    if (!deck || slideIndex < 0) {
+      return;
+    }
+
+    const nextSlide = deck.slides[slideIndex + offset];
+
+    if (!nextSlide) {
+      return;
+    }
+
+    onSelectSource({
+      deckId: deck.id,
+      slideNumber: nextSlide.slideNumber,
+    });
+  }
 
   return (
     <aside className="flex h-full min-h-0 flex-col border-l border-zinc-800 bg-zinc-950">
@@ -80,6 +109,32 @@ export function SourcePreview({
           <p className="mt-1 text-sm text-zinc-500">
             {slide.title ?? "Untitled slide"}
           </p>
+
+          <div className="mt-3 flex items-center justify-between gap-2 rounded-lg border border-zinc-800 bg-zinc-900 px-2 py-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={isFirstSlide}
+              onClick={() => selectSlideByOffset(-1)}
+            >
+              <ChevronLeft aria-hidden="true" />
+              Previous
+            </Button>
+            <p className="shrink-0 text-xs font-medium text-zinc-300">
+              Slide {slide.slideNumber} / {deck.manifest.slide_count}
+            </p>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={isLastSlide}
+              onClick={() => selectSlideByOffset(1)}
+            >
+              Next
+              <ChevronRight aria-hidden="true" />
+            </Button>
+          </div>
 
           <section className="mt-4 rounded-lg border border-zinc-800 bg-zinc-900 p-2">
             {imageUrl ? (
