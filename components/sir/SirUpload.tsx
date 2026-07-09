@@ -1,8 +1,9 @@
 "use client";
 
 import { Loader2, Upload } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
+import { SourceSearch } from "@/components/search/SourceSearch";
 import { SirDeckViewer, type BrowserSirDeck } from "@/components/sir/SirDeckViewer";
 import { SlideList } from "@/components/sir/SlideList";
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +16,8 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { chunkSlides } from "@/lib/search/chunkSlides";
+import { lexicalSearch } from "@/lib/search/lexicalSearch";
 import { readSirImageObjectUrls } from "@/lib/sir/readSirImages";
 import type { SirValidationError } from "@/lib/sir/types";
 import { parseSirFile } from "@/lib/sir/importSir";
@@ -25,8 +28,15 @@ export function SirUpload() {
   const objectUrlsRef = useRef<string[]>([]);
   const [deck, setDeck] = useState<BrowserSirDeck | null>(null);
   const [selectedSlideNumber, setSelectedSlideNumber] = useState(1);
+  const [searchQuery, setSearchQuery] = useState("");
   const [errors, setErrors] = useState<SirValidationError[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const sourceChunks = useMemo(() => (deck ? chunkSlides(deck) : []), [deck]);
+  const searchResults = useMemo(
+    () => lexicalSearch(sourceChunks, searchQuery, sourceChunks.length),
+    [sourceChunks, searchQuery],
+  );
+  const topSearchResults = searchResults.slice(0, 10);
 
   useEffect(() => {
     return () => {
@@ -51,6 +61,7 @@ export function SirUpload() {
 
     setIsLoading(true);
     setErrors([]);
+    setSearchQuery("");
     replaceDeck(null);
 
     try {
@@ -146,11 +157,21 @@ export function SirUpload() {
         {errors.length > 0 ? <ValidationIssues errors={errors} /> : null}
 
         {deck ? (
-          <SlideList
-            slides={deck.slides}
-            selectedSlideNumber={selectedSlideNumber}
-            onSelectSlide={setSelectedSlideNumber}
-          />
+          <>
+            <SourceSearch
+              query={searchQuery}
+              resultCount={searchResults.length}
+              results={topSearchResults}
+              selectedSlideNumber={selectedSlideNumber}
+              onQueryChange={setSearchQuery}
+              onSelectSlide={setSelectedSlideNumber}
+            />
+            <SlideList
+              slides={deck.slides}
+              selectedSlideNumber={selectedSlideNumber}
+              onSelectSlide={setSelectedSlideNumber}
+            />
+          </>
         ) : null}
       </aside>
 
