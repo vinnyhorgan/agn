@@ -14,23 +14,46 @@ interface MarkdownHeading {
   text: string;
 }
 
-export function chunkSlides(deck: ParsedSirFile): SourceChunk[] {
+interface ChunkSlidesOptions {
+  deckId?: string;
+  sourceLabel?: string;
+}
+
+export function chunkSlides(
+  deck: ParsedSirFile,
+  options: ChunkSlidesOptions = {},
+): SourceChunk[] {
   const chunks: SourceChunk[] = [];
+  const deckId = options.deckId ?? createDefaultDeckId(deck.manifest.title);
 
   for (const slide of deck.slides) {
     const slideImagePath = getSlideImagePath(deck, slide.slideNumber);
-    const slideChunks = chunkSlide(deck.manifest.title, slide, slideImagePath);
+    const slideChunks = chunkSlide({
+      deckId,
+      deckTitle: deck.manifest.title,
+      sourceLabel: options.sourceLabel,
+      slide,
+      slideImagePath,
+    });
     chunks.push(...slideChunks);
   }
 
   return chunks;
 }
 
-function chunkSlide(
-  deckTitle: string,
-  slide: ParsedSirSlide,
-  slideImagePath: string,
-): SourceChunk[] {
+function chunkSlide({
+  deckId,
+  deckTitle,
+  sourceLabel,
+  slide,
+  slideImagePath,
+}: {
+  deckId: string;
+  deckTitle: string;
+  sourceLabel?: string;
+  slide: ParsedSirSlide;
+  slideImagePath: string;
+}): SourceChunk[] {
   const sections = splitSlideIntoSections(slide);
   const splitByHeading = sections.length > 0;
   const sourceTexts = splitByHeading
@@ -51,8 +74,10 @@ function chunkSlide(
 
   return sourceTexts
     .map((sourceText, index) => ({
-      id: `slide-${slide.slideNumber}-chunk-${index + 1}`,
+      id: `${deckId}:slide-${slide.slideNumber}-chunk-${index + 1}`,
+      deckId,
       deckTitle,
+      sourceLabel,
       slideNumber: slide.slideNumber,
       slideTitle: slide.title,
       headingPath: sourceText.headingPath,
@@ -259,6 +284,15 @@ function stripMarkdown(markdown: string): string {
 
 function collapseWhitespace(text: string): string {
   return text.replace(/\s+/g, " ").trim();
+}
+
+function createDefaultDeckId(deckTitle: string): string {
+  const normalized = deckTitle
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  return normalized || "deck";
 }
 
 function getSlideImagePath(deck: ParsedSirFile, slideNumber: number): string {

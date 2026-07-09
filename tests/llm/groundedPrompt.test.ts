@@ -36,6 +36,7 @@ describe("grounded prompt construction", () => {
 function createChunk(): SourceChunk {
   return {
     id: "slide-3-chunk-1",
+    deckId: "biology",
     deckTitle: "Biology",
     slideNumber: 3,
     slideTitle: "Photosynthesis",

@@ -1,6 +1,8 @@
 export interface SourceChunk {
   id: string;
+  deckId: string;
   deckTitle: string;
+  sourceLabel?: string;
   slideNumber: number;
   slideTitle?: string;
   headingPath?: string[];

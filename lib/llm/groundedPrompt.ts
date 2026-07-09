@@ -44,6 +44,8 @@ export function buildSourceBlock(sourceChunks: SourceChunk[]): string {
 function formatSourceChunk(chunk: SourceChunk, index: number): string {
   const lines = [
     `<source index="${index + 1}">`,
+    ...(chunk.sourceLabel ? [`Source label: ${chunk.sourceLabel}`] : []),
+    `Deck: ${chunk.deckTitle}`,
     `Slide: ${chunk.slideNumber}`,
     `Slide title: ${chunk.slideTitle ?? "Untitled slide"}`,
   ];

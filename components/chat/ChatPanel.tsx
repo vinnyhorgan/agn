@@ -7,14 +7,6 @@ import { ChatMessage } from "@/components/chat/ChatMessage";
 import { ProviderSettings } from "@/components/chat/ProviderSettings";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { buildGroundedMessages } from "@/lib/llm/groundedPrompt";
 import { createOpenAiCompatibleChatCompletion } from "@/lib/llm/openAiCompatible";
 import type { ProviderSettings as ProviderSettingsValue } from "@/lib/llm/types";
@@ -24,7 +16,13 @@ import { cn } from "@/lib/utils";
 
 interface ChatPanelProps {
   sourceChunks: SourceChunk[];
-  onSelectSlide: (slideNumber: number) => void;
+  sourceCount?: number;
+  onSelectSource?: (source: {
+    deckId: string;
+    slideNumber: number;
+    chunkId?: string;
+  }) => void;
+  onSelectSlide?: (slideNumber: number) => void;
 }
 
 interface ChatTurn {
@@ -32,6 +30,7 @@ interface ChatTurn {
   question: string;
   answer?: string;
   sources: SourceChunk[];
+  skippedModel?: boolean;
 }
 
 const retrievalLimit = 6;
@@ -41,7 +40,15 @@ const defaultProviderSettings: ProviderSettingsValue = {
   model: "openai/gpt-4.1-mini",
 };
 
-export function ChatPanel({ sourceChunks, onSelectSlide }: ChatPanelProps) {
+const noSourceAnswer =
+  "I could not find relevant support for that in the uploaded SIR sources, so I cannot answer it from the current knowledge base.";
+
+export function ChatPanel({
+  sourceChunks,
+  sourceCount,
+  onSelectSource,
+  onSelectSlide,
+}: ChatPanelProps) {
   const [settings, setSettings] = useState<ProviderSettingsValue>(
     defaultProviderSettings,
   );
@@ -50,21 +57,14 @@ export function ChatPanel({ sourceChunks, onSelectSlide }: ChatPanelProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | undefined>();
 
-  const latestTurn = turns[0];
-  const validSlideNumbers = useMemo(
-    () =>
-      latestTurn
-        ? new Set(latestTurn.sources.map((source) => source.slideNumber))
-        : undefined,
-    [latestTurn],
-  );
+  const hasSources = sourceChunks.length > 0;
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     const trimmedQuestion = question.trim();
 
-    if (!trimmedQuestion || isLoading) {
+    if (!trimmedQuestion || isLoading || !hasSources) {
       return;
     }
 
@@ -75,15 +75,18 @@ export function ChatPanel({ sourceChunks, onSelectSlide }: ChatPanelProps) {
     ).map((result) => result.chunk);
 
     if (sources.length === 0) {
-      setError("No relevant source was found in the currently loaded deck.");
-      setTurns([
+      setError(undefined);
+      setTurns((currentTurns) => [
+        ...currentTurns,
         {
           id: crypto.randomUUID(),
           question: trimmedQuestion,
+          answer: noSourceAnswer,
           sources: [],
+          skippedModel: true,
         },
-        ...turns,
       ]);
+      setQuestion("");
       return;
     }
 
@@ -100,14 +103,14 @@ export function ChatPanel({ sourceChunks, onSelectSlide }: ChatPanelProps) {
         messages,
       });
 
-      setTurns([
+      setTurns((currentTurns) => [
+        ...currentTurns,
         {
           id: crypto.randomUUID(),
           question: trimmedQuestion,
           answer: response.content,
           sources,
         },
-        ...turns,
       ]);
       setQuestion("");
     } catch (chatError) {
@@ -121,140 +124,180 @@ export function ChatPanel({ sourceChunks, onSelectSlide }: ChatPanelProps) {
     }
   }
 
+  function selectSource(source: SourceChunk) {
+    onSelectSource?.({
+      deckId: source.deckId,
+      slideNumber: source.slideNumber,
+      chunkId: source.id,
+    });
+    onSelectSlide?.(source.slideNumber);
+  }
+
   return (
-    <Card className="rounded-lg bg-white">
-      <CardHeader className="border-b border-zinc-200">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <CardTitle>Chat with Sources</CardTitle>
-            <CardDescription>
-              Sends only retrieved chunks from this deck to your provider.
-            </CardDescription>
-          </div>
-          <Badge variant="outline">{sourceChunks.length} chunks</Badge>
+    <section className="flex h-full min-h-0 flex-col bg-zinc-950">
+      <header className="flex min-h-14 items-center justify-between gap-3 border-b border-zinc-800 px-4">
+        <div className="min-w-0">
+          <h1 className="truncate text-sm font-semibold text-zinc-50">
+            Source-grounded chat
+          </h1>
+          <p className="truncate text-xs text-zinc-500">
+            Answers use retrieved SIR chunks only.
+          </p>
         </div>
-      </CardHeader>
-      <CardContent className="grid gap-4">
-        <ProviderSettings settings={settings} onChange={setSettings} />
+        <div className="flex shrink-0 items-center gap-2">
+          <Badge variant="outline" className="border-zinc-800 text-zinc-300">
+            {sourceCount ?? 0} source{(sourceCount ?? 0) === 1 ? "" : "s"}
+          </Badge>
+          <ProviderSettings settings={settings} onChange={setSettings} />
+        </div>
+      </header>
 
-        <form className="grid gap-2" onSubmit={handleSubmit}>
-          <label className="grid gap-1.5 text-sm font-medium text-zinc-700">
-            Question
-            <textarea
-              value={question}
-              rows={3}
-              placeholder="Ask about the loaded deck"
-              disabled={isLoading || sourceChunks.length === 0}
-              className="min-h-24 w-full resize-y rounded-lg border border-input bg-transparent px-3 py-2 text-sm leading-6 outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50"
-              onChange={(event) => setQuestion(event.target.value)}
-            />
-          </label>
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-xs leading-5 text-zinc-500">
-              Retrieval uses lexical search over the current deck, top{" "}
-              {retrievalLimit}.
-            </p>
-            <Button
-              type="submit"
-              disabled={isLoading || !question.trim() || sourceChunks.length === 0}
-            >
-              {isLoading ? (
-                <Loader2 className="animate-spin" aria-hidden="true" />
-              ) : (
-                <Send aria-hidden="true" />
-              )}
-              Send
-            </Button>
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5">
+        {turns.length === 0 ? (
+          <div className="flex h-full min-h-[320px] items-center justify-center text-center">
+            <div className="max-w-md">
+              <h2 className="text-lg font-semibold text-zinc-100">
+                Ask from your sources
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-zinc-400">
+                Upload one or more SIR files, then ask a question grounded in
+                your sources.
+              </p>
+            </div>
           </div>
-        </form>
+        ) : (
+          <div className="mx-auto flex max-w-3xl flex-col gap-5">
+            {turns.map((turn) => (
+              <ChatTurnView
+                key={turn.id}
+                turn={turn}
+                onSelectSource={selectSource}
+              />
+            ))}
+          </div>
+        )}
+      </div>
 
+      <footer className="border-t border-zinc-800 bg-zinc-950 px-4 py-3">
         {error ? (
-          <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm leading-6 text-destructive">
+          <div className="mx-auto mb-3 flex max-w-3xl items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm leading-6 text-destructive">
             <AlertCircle className="mt-1 size-4 shrink-0" aria-hidden="true" />
             <span>{error}</span>
           </div>
         ) : null}
-
-        {latestTurn ? (
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-            <div className="grid gap-2">
-              <ChatMessage role="user" content={latestTurn.question} />
-              {latestTurn.answer ? (
-                <ChatMessage
-                  role="assistant"
-                  content={latestTurn.answer}
-                  validSlideNumbers={validSlideNumbers}
-                />
-              ) : (
-                <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm leading-6 text-zinc-600">
-                  No model call was made for this question.
-                </div>
-              )}
-            </div>
-            <RetrievedSources
-              sources={latestTurn.sources}
-              onSelectSlide={onSelectSlide}
-            />
-          </div>
-        ) : (
-          <p className="rounded-lg border border-dashed border-zinc-200 px-3 py-6 text-center text-sm text-zinc-600">
-            Ask a question to retrieve source chunks and generate a cited answer.
+        {!hasSources ? (
+          <p className="mx-auto mb-2 max-w-3xl text-xs text-zinc-500">
+            Upload at least one SIR source before chatting.
           </p>
-        )}
-      </CardContent>
-    </Card>
+        ) : null}
+        <form className="mx-auto flex max-w-3xl items-end gap-2" onSubmit={handleSubmit}>
+          <label className="sr-only" htmlFor="chat-question">
+            Ask a source-grounded question
+          </label>
+          <textarea
+            id="chat-question"
+            value={question}
+            rows={2}
+            placeholder={
+              hasSources
+                ? "Ask a question grounded in the uploaded sources"
+                : "Upload SIR sources to enable chat"
+            }
+            disabled={isLoading || !hasSources}
+            className="max-h-36 min-h-14 flex-1 resize-none rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm leading-6 text-zinc-100 outline-none transition-colors placeholder:text-zinc-500 focus-visible:border-zinc-600 focus-visible:ring-3 focus-visible:ring-zinc-700/50 disabled:pointer-events-none disabled:opacity-50"
+            onChange={(event) => setQuestion(event.target.value)}
+          />
+          <Button
+            type="submit"
+            size="icon-lg"
+            disabled={isLoading || !question.trim() || !hasSources}
+            aria-label="Send question"
+          >
+            {isLoading ? (
+              <Loader2 className="animate-spin" aria-hidden="true" />
+            ) : (
+              <Send aria-hidden="true" />
+            )}
+          </Button>
+        </form>
+      </footer>
+    </section>
+  );
+}
+
+function ChatTurnView({
+  turn,
+  onSelectSource,
+}: {
+  turn: ChatTurn;
+  onSelectSource: (source: SourceChunk) => void;
+}) {
+  const validSlideNumbers = useMemo(
+    () => new Set(turn.sources.map((source) => source.slideNumber)),
+    [turn.sources],
+  );
+
+  function selectCitation(slideNumber: number) {
+    const matchingSource = turn.sources.find(
+      (source) => source.slideNumber === slideNumber,
+    );
+
+    if (matchingSource) {
+      onSelectSource(matchingSource);
+    }
+  }
+
+  return (
+    <article className="flex flex-col gap-2">
+      <ChatMessage role="user" content={turn.question} />
+      {turn.answer ? (
+        <ChatMessage
+          role="assistant"
+          content={turn.answer}
+          validSlideNumbers={validSlideNumbers}
+          onCitationClick={selectCitation}
+        />
+      ) : null}
+      {turn.sources.length > 0 ? (
+        <RetrievedSources sources={turn.sources} onSelectSource={onSelectSource} />
+      ) : turn.skippedModel ? (
+        <p className="mr-auto rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-xs text-zinc-500">
+          No model call was made because retrieval found no supporting chunks.
+        </p>
+      ) : null}
+    </article>
   );
 }
 
 function RetrievedSources({
   sources,
-  onSelectSlide,
+  onSelectSource,
 }: {
   sources: SourceChunk[];
-  onSelectSlide: (slideNumber: number) => void;
+  onSelectSource: (source: SourceChunk) => void;
 }) {
   return (
-    <div className="rounded-lg border border-zinc-200">
-      <div className="flex items-center justify-between gap-3 border-b border-zinc-200 px-3 py-2">
-        <h3 className="text-sm font-medium text-zinc-950">Retrieved sources</h3>
-        <Badge variant="secondary">{sources.length}</Badge>
-      </div>
-      {sources.length > 0 ? (
-        <ScrollArea className="h-[340px]">
-          <div className="grid gap-2 p-2">
-            {sources.map((source) => (
-              <button
-                key={source.id}
-                type="button"
-                className={cn(
-                  "rounded-lg border border-zinc-200 px-3 py-2 text-left transition-colors hover:border-zinc-950 hover:bg-zinc-50",
-                  "focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
-                )}
-                onClick={() => onSelectSlide(source.slideNumber)}
-              >
-                <span className="block text-xs font-medium text-zinc-500">
-                  Slide {source.slideNumber}
-                </span>
-                <span className="mt-1 block line-clamp-1 text-sm font-medium text-zinc-950">
-                  {source.slideTitle ?? "Untitled slide"}
-                </span>
-                {source.headingPath?.length ? (
-                  <span className="mt-1 block line-clamp-1 text-xs text-zinc-500">
-                    {source.headingPath.join(" / ")}
-                  </span>
-                ) : null}
-                <span className="mt-1 block line-clamp-5 text-sm leading-6 text-zinc-700">
-                  {source.text}
-                </span>
-              </button>
-            ))}
-          </div>
-        </ScrollArea>
-      ) : (
-        <p className="px-3 py-4 text-sm leading-6 text-zinc-600">
-          No relevant source was found.
-        </p>
-      )}
+    <div className="mr-auto flex max-w-[86%] flex-wrap gap-2">
+      {sources.map((source) => (
+        <button
+          key={source.id}
+          type="button"
+          className={cn(
+            "min-w-0 max-w-full rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-left text-xs transition-colors hover:border-zinc-600 hover:bg-zinc-800",
+            "focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
+          )}
+          onClick={() => onSelectSource(source)}
+        >
+          <span className="block truncate font-medium text-zinc-200">
+            {source.sourceLabel ? `${source.sourceLabel} · ` : ""}
+            {source.deckTitle}
+          </span>
+          <span className="mt-0.5 block truncate text-zinc-500">
+            Slide {source.slideNumber}
+            {source.slideTitle ? ` · ${source.slideTitle}` : ""}
+          </span>
+        </button>
+      ))}
     </div>
   );
 }

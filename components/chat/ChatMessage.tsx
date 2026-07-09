@@ -7,6 +7,7 @@ interface ChatMessageProps {
   role: "user" | "assistant";
   content: string;
   validSlideNumbers?: Set<number>;
+  onCitationClick?: (slideNumber: number) => void;
 }
 
 const citationPattern = /(\[Slide\s+(\d+)\])/gi;
@@ -15,27 +16,32 @@ export function ChatMessage({
   role,
   content,
   validSlideNumbers,
+  onCitationClick,
 }: ChatMessageProps) {
   return (
     <div
       className={cn(
         "rounded-lg border px-3 py-2",
         role === "user"
-          ? "border-zinc-200 bg-zinc-50"
-          : "border-zinc-200 bg-white",
+          ? "ml-auto max-w-[82%] border-zinc-700 bg-zinc-800 text-zinc-100"
+          : "mr-auto max-w-[86%] border-zinc-800 bg-zinc-950 text-zinc-100",
       )}
     >
       <div className="mb-1 text-xs font-medium uppercase tracking-normal text-zinc-500">
-        {role === "user" ? "Question" : "Answer"}
+        {role === "user" ? "You" : "AGN"}
       </div>
-      <div className="whitespace-pre-wrap text-sm leading-6 text-zinc-800">
-        {renderCitationText(content, validSlideNumbers)}
+      <div className="whitespace-pre-wrap text-sm leading-6 text-zinc-200">
+        {renderCitationText(content, validSlideNumbers, onCitationClick)}
       </div>
     </div>
   );
 }
 
-function renderCitationText(content: string, validSlideNumbers?: Set<number>) {
+function renderCitationText(
+  content: string,
+  validSlideNumbers?: Set<number>,
+  onCitationClick?: (slideNumber: number) => void,
+) {
   const parts = content.split(citationPattern);
   const nodes: React.ReactNode[] = [];
 
@@ -52,15 +58,28 @@ function renderCitationText(content: string, validSlideNumbers?: Set<number>) {
       const slideNumber = Number(slideNumberText);
       const isValid =
         validSlideNumbers === undefined || validSlideNumbers.has(slideNumber);
-
-      nodes.push(
+      const badge = (
         <Badge
-          key={`${citation}-${index}`}
           variant={isValid ? "secondary" : "destructive"}
           className="mx-1 align-baseline"
         >
           {citation}
-        </Badge>,
+        </Badge>
+      );
+
+      nodes.push(
+        onCitationClick && isValid ? (
+          <button
+            key={`${citation}-${index}`}
+            type="button"
+            className="align-baseline outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={() => onCitationClick(slideNumber)}
+          >
+            {badge}
+          </button>
+        ) : (
+          <span key={`${citation}-${index}`}>{badge}</span>
+        ),
       );
     }
   }
