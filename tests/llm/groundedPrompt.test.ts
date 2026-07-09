@@ -16,7 +16,7 @@ describe("grounded prompt construction", () => {
     expect(promptText).toContain("Heading path: Photosynthesis > Chlorophyll");
   });
 
-  it("includes source-only and not-in-sources instructions", () => {
+  it("prioritizes SIR sources without blocking general answers", () => {
     const messages = buildGroundedMessages({
       question: "What is ATP?",
       sourceChunks: [createChunk()],
@@ -24,12 +24,27 @@ describe("grounded prompt construction", () => {
     const systemMessage = messages[0]?.content ?? "";
 
     expect(systemMessage).toContain(
-      "Answer only using the provided SIR source excerpts.",
+      "When SIR source excerpts are provided and relevant, prioritize them over general knowledge.",
     );
     expect(systemMessage).toContain(
-      "If the answer is not in the sources, say that it is not stated in the provided sources.",
+      "If the provided SIR excerpts do not contain enough support, answer normally using general knowledge.",
     );
-    expect(systemMessage).toContain("Do not use web knowledge.");
+    expect(systemMessage).toContain(
+      "Cite slide numbers for claims that rely on SIR source excerpts.",
+    );
+  });
+
+  it("handles messages with no retrieved source chunks", () => {
+    const messages = buildGroundedMessages({
+      question: "Hello",
+      sourceChunks: [],
+    });
+    const promptText = messages.map((message) => message.content).join("\n");
+
+    expect(promptText).toContain(
+      "No relevant SIR source excerpts were retrieved for this message.",
+    );
+    expect(promptText).toContain("User question:\nHello");
   });
 });
 

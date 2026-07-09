@@ -1,14 +1,14 @@
 "use client";
 
 import { AlertCircle, Loader2, Send } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { ChatMessage } from "@/components/chat/ChatMessage";
 import { ProviderSettings } from "@/components/chat/ProviderSettings";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { buildGroundedMessages } from "@/lib/llm/groundedPrompt";
-import { createDeepInfraChatCompletion } from "@/lib/llm/openAiCompatible";
+import { createDeepInfraChatCompletionViaRoute } from "@/lib/llm/openAiCompatible";
 import type { DeepInfraSettings } from "@/lib/llm/types";
 import { lexicalSearch } from "@/lib/search/lexicalSearch";
 import type { SourceChunk } from "@/lib/search/types";
@@ -30,17 +30,27 @@ interface ChatTurn {
   question: string;
   answer?: string;
   sources: SourceChunk[];
-  skippedModel?: boolean;
 }
 
 const retrievalLimit = 6;
+const deepInfraApiKeyStorageKey = "agn.deepInfra.apiKey";
 const defaultDeepInfraSettings: DeepInfraSettings = {
   apiKey: "",
 };
 
 const missingApiKeyMessage = "Add a valid DeepInfra API key before chatting.";
-const noSourceAnswer =
-  "I could not find relevant support for that in the uploaded SIR sources, so I cannot answer it from the current knowledge base.";
+
+function readStoredDeepInfraApiKey(): string | undefined {
+  if (typeof window === "undefined") {
+    return undefined;
+  }
+
+  try {
+    return window.localStorage.getItem(deepInfraApiKeyStorageKey) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 export function ChatPanel({
   sourceChunks,
@@ -48,9 +58,9 @@ export function ChatPanel({
   onSelectSource,
   onSelectSlide,
 }: ChatPanelProps) {
-  const [settings, setSettings] = useState<DeepInfraSettings>(
-    defaultDeepInfraSettings,
-  );
+  const [settings, setSettings] = useState<DeepInfraSettings>(() => ({
+    apiKey: readStoredDeepInfraApiKey() ?? defaultDeepInfraSettings.apiKey,
+  }));
   const [question, setQuestion] = useState("");
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -58,12 +68,24 @@ export function ChatPanel({
 
   const hasSources = sourceChunks.length > 0;
 
+  useEffect(() => {
+    try {
+      if (settings.apiKey) {
+        window.localStorage.setItem(deepInfraApiKeyStorageKey, settings.apiKey);
+      } else {
+        window.localStorage.removeItem(deepInfraApiKeyStorageKey);
+      }
+    } catch {
+      // Keep chat usable even if the browser blocks localStorage writes.
+    }
+  }, [settings.apiKey]);
+
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     const trimmedQuestion = question.trim();
 
-    if (!trimmedQuestion || isLoading || !hasSources) {
+    if (!trimmedQuestion || isLoading) {
       return;
     }
 
@@ -72,27 +94,11 @@ export function ChatPanel({
       return;
     }
 
-    const sources = lexicalSearch(
-      sourceChunks,
-      trimmedQuestion,
-      retrievalLimit,
-    ).map((result) => result.chunk);
-
-    if (sources.length === 0) {
-      setError(undefined);
-      setTurns((currentTurns) => [
-        ...currentTurns,
-        {
-          id: crypto.randomUUID(),
-          question: trimmedQuestion,
-          answer: noSourceAnswer,
-          sources: [],
-          skippedModel: true,
-        },
-      ]);
-      setQuestion("");
-      return;
-    }
+    const sources = hasSources
+      ? lexicalSearch(sourceChunks, trimmedQuestion, retrievalLimit).map(
+          (result) => result.chunk,
+        )
+      : [];
 
     setIsLoading(true);
     setError(undefined);
@@ -102,7 +108,7 @@ export function ChatPanel({
         question: trimmedQuestion,
         sourceChunks: sources,
       });
-      const response = await createDeepInfraChatCompletion({
+      const response = await createDeepInfraChatCompletionViaRoute({
         settings,
         messages,
       });
@@ -137,6 +143,17 @@ export function ChatPanel({
     onSelectSlide?.(source.slideNumber);
   }
 
+  function handleQuestionKeyDown(
+    event: React.KeyboardEvent<HTMLTextAreaElement>,
+  ) {
+    if (event.key !== "Enter" || event.shiftKey) {
+      return;
+    }
+
+    event.preventDefault();
+    event.currentTarget.form?.requestSubmit();
+  }
+
   return (
     <section className="flex h-full min-h-0 flex-col bg-zinc-950">
       <header className="flex min-h-14 items-center justify-between gap-3 border-b border-zinc-800 px-4">
@@ -145,7 +162,7 @@ export function ChatPanel({
             Source-grounded chat
           </h1>
           <p className="truncate text-xs text-zinc-500">
-            DeepInfra answers use retrieved SIR chunks only.
+            DeepInfra prioritizes uploaded SIR sources when relevant.
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -161,11 +178,11 @@ export function ChatPanel({
           <div className="flex h-full min-h-[320px] items-center justify-center text-center">
             <div className="max-w-md">
               <h2 className="text-lg font-semibold text-zinc-100">
-                Ask from your sources
+                Ask anything
               </h2>
               <p className="mt-2 text-sm leading-6 text-zinc-400">
-                Upload one or more SIR files, then ask a question grounded in
-                your sources.
+                Uploaded SIR sources are retrieved first and cited when they
+                support the answer.
               </p>
             </div>
           </div>
@@ -191,7 +208,7 @@ export function ChatPanel({
         ) : null}
         {!hasSources ? (
           <p className="mx-auto mb-2 max-w-3xl text-xs text-zinc-500">
-            Upload at least one SIR source before chatting.
+            Upload SIR sources to prioritize deck knowledge in answers.
           </p>
         ) : null}
         <form className="mx-auto flex max-w-3xl items-end gap-2" onSubmit={handleSubmit}>
@@ -204,17 +221,18 @@ export function ChatPanel({
             rows={2}
             placeholder={
               hasSources
-                ? "Ask a question grounded in the uploaded sources"
-                : "Upload SIR sources to enable chat"
+                ? "Ask anything; SIR sources are prioritized"
+                : "Ask anything, or upload SIR sources for deck-grounded answers"
             }
-            disabled={isLoading || !hasSources}
+            disabled={isLoading}
             className="max-h-36 min-h-14 flex-1 resize-none rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm leading-6 text-zinc-100 outline-none transition-colors placeholder:text-zinc-500 focus-visible:border-zinc-600 focus-visible:ring-3 focus-visible:ring-zinc-700/50 disabled:pointer-events-none disabled:opacity-50"
+            onKeyDown={handleQuestionKeyDown}
             onChange={(event) => setQuestion(event.target.value)}
           />
           <Button
             type="submit"
             size="icon-lg"
-            disabled={isLoading || !question.trim() || !hasSources}
+            disabled={isLoading || !question.trim()}
             aria-label="Send question"
           >
             {isLoading ? (
@@ -264,10 +282,6 @@ function ChatTurnView({
       ) : null}
       {turn.sources.length > 0 ? (
         <RetrievedSources sources={turn.sources} onSelectSource={onSelectSource} />
-      ) : turn.skippedModel ? (
-        <p className="mr-auto rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-xs text-zinc-500">
-          No model call was made because retrieval found no supporting chunks.
-        </p>
       ) : null}
     </article>
   );

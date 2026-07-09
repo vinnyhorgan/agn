@@ -82,6 +82,49 @@ export async function createDeepInfraChatCompletion({
   };
 }
 
+export async function createDeepInfraChatCompletionViaRoute({
+  settings,
+  messages,
+}: {
+  settings: DeepInfraSettings;
+  messages: LlmMessage[];
+}): Promise<ChatCompletionResult> {
+  const apiKey = settings.apiKey.trim();
+
+  if (!apiKey) {
+    throw new Error("Add a valid DeepInfra API key before chatting.");
+  }
+
+  const response = await fetch("/api/deepinfra/chat", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ apiKey, messages }),
+  });
+
+  const payload = (await readJsonResponse(response)) as {
+    content?: unknown;
+    error?: unknown;
+  };
+
+  if (!response.ok) {
+    throw new Error(
+      typeof payload.error === "string"
+        ? payload.error
+        : `DeepInfra request failed with status ${response.status}.`,
+    );
+  }
+
+  if (typeof payload.content !== "string" || payload.content.trim().length === 0) {
+    throw new Error("DeepInfra response did not include an assistant message.");
+  }
+
+  return {
+    content: payload.content,
+  };
+}
+
 async function readJsonResponse(response: Response): Promise<unknown> {
   const text = await response.text();
 

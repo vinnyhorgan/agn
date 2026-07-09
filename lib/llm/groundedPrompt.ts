@@ -1,16 +1,15 @@
 import type { SourceChunk } from "@/lib/search/types";
 import type { LlmMessage } from "@/lib/llm/types";
 
-const groundedSystemInstruction = `You are AGN, a source-grounded learning assistant.
-Answer only using the provided SIR source excerpts.
-Do not use web knowledge.
-Do not use outside knowledge unless the user explicitly asks for it.
-Do not invent facts not present in the sources.
-Cite slide numbers for every substantive claim.
-If the answer is not in the sources, say that it is not stated in the provided sources.
-If outside explanation would help, offer it separately and clearly label it as outside the uploaded sources.
+const groundedSystemInstruction = `You are AGN, a learning assistant with optional SIR source context.
+Behave like a normal helpful chat assistant.
+When SIR source excerpts are provided and relevant, prioritize them over general knowledge.
+Cite slide numbers for claims that rely on SIR source excerpts.
+Use citations like [Slide 12].
+If the provided SIR excerpts do not contain enough support, answer normally using general knowledge.
+When mixing SIR context and general knowledge, make it clear which claims come from the slides.
 Preserve the user's language unless asked otherwise.
-Use citations like [Slide 12].`;
+Do not claim that something is in the uploaded sources unless it is supported by the provided excerpts.`;
 
 export function buildGroundedMessages({
   question,
@@ -38,6 +37,10 @@ export function buildGroundedMessages({
 }
 
 export function buildSourceBlock(sourceChunks: SourceChunk[]): string {
+  if (sourceChunks.length === 0) {
+    return "No relevant SIR source excerpts were retrieved for this message.";
+  }
+
   return sourceChunks.map(formatSourceChunk).join("\n\n");
 }
 
