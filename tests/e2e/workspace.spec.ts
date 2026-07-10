@@ -92,6 +92,11 @@ test("persists unique decks and remembers each deck's slide", async ({
   await page.keyboard.press("ArrowLeft");
   await expect(page.getByRole("dialog", { name: "Slide 2 image" })).toBeVisible();
   await page.getByRole("button", { name: "Close enlarged slide" }).click();
+  await page.getByRole("button", { name: "Enlarge slide 2" }).click();
+  await page
+    .getByRole("dialog", { name: "Slide 2 image" })
+    .click({ position: { x: 20, y: 850 } });
+  await expect(page.getByRole("dialog", { name: "Slide 2 image" })).toHaveCount(0);
 
   await page.reload();
   await expect(page.getByText("Database Foundations", { exact: true }).first()).toBeVisible();

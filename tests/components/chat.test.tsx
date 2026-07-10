@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ChatMessage } from "../../components/chat/ChatMessage";
 import { ChatPanel } from "../../components/chat/ChatPanel";
+import type { SourceChunk } from "../../lib/search/types";
 
 describe("chat interactions", () => {
   beforeEach(() => {
@@ -56,5 +57,54 @@ describe("chat interactions", () => {
         "replacement-key",
       );
     });
+  });
+
+  it("copies a diagnostic export with the full chat and retrieved context", async () => {
+    const source: SourceChunk = {
+      id: "deck-1:slide-3-chunk-1",
+      deckId: "deck-1",
+      deckTitle: "Database Foundations",
+      sourceLabel: "Source 2",
+      sourceTitle: "Relational model",
+      sourcePath: "lectures/relational.pdf",
+      sourceMediaType: "pdf",
+      slideNumber: 8,
+      sourceSlideNumber: 3,
+      slideTitle: "Candidate keys",
+      headingPath: ["Keys", "Candidate keys"],
+      text: "A candidate key is a minimal superkey.",
+      slideImagePath: "slides/0008.webp",
+    };
+    window.localStorage.setItem(
+      "agn.chat.history",
+      JSON.stringify([
+        {
+          id: "turn-1",
+          question: "What is a candidate key?",
+          answer: "It is a minimal superkey. [Source 2, Slide 3]",
+          sourceIds: [source.id],
+          status: "complete",
+        },
+      ]),
+    );
+    const user = userEvent.setup();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(window.navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+
+    render(<ChatPanel sourceChunks={[source]} sourceCount={1} />);
+    await user.click(
+      screen.getByRole("button", { name: "Copy chat for diagnosis" }),
+    );
+
+    expect(writeText).toHaveBeenCalledOnce();
+    const exportText = String(writeText.mock.calls[0]?.[0]);
+    expect(exportText).toContain("# AGN chat diagnostic export");
+    expect(exportText).toContain("What is a candidate key?");
+    expect(exportText).toContain("It is a minimal superkey.");
+    expect(exportText).toContain("lectures/relational.pdf");
+    expect(exportText).toContain("A candidate key is a minimal superkey.");
   });
 });

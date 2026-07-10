@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, Send, Square, Trash2 } from "lucide-react";
+import { AlertCircle, Check, Copy, Send, Square, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { ChatMessage } from "@/components/chat/ChatMessage";
@@ -79,6 +79,7 @@ export function ChatPanel({
   const [question, setQuestion] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string>();
+  const [didCopyChat, setDidCopyChat] = useState(false);
   const abortControllerRef = useRef<AbortController | undefined>(undefined);
   const conversationEndRef = useRef<HTMLDivElement>(null);
   const turns = sessionTurns ?? storedTurns;
@@ -194,6 +195,12 @@ export function ChatPanel({
     setError(undefined);
   }
 
+  async function copyConversation() {
+    await navigator.clipboard.writeText(formatChatDiagnosticExport(turns));
+    setDidCopyChat(true);
+    window.setTimeout(() => setDidCopyChat(false), 2_000);
+  }
+
   function selectSource(source: SourceChunk) {
     onSelectSource?.({
       deckId: source.deckId,
@@ -239,16 +246,28 @@ export function ChatPanel({
             }
           />
           {turns.length > 0 ? (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              title="Clear conversation"
-              aria-label="Clear conversation"
-              onClick={clearConversation}
-            >
-              <Trash2 aria-hidden="true" />
-            </Button>
+            <>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                title={didCopyChat ? "Chat copied" : "Copy chat for diagnosis"}
+                aria-label={didCopyChat ? "Chat copied" : "Copy chat for diagnosis"}
+                onClick={() => void copyConversation()}
+              >
+                {didCopyChat ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                title="Clear conversation"
+                aria-label="Clear conversation"
+                onClick={clearConversation}
+              >
+                <Trash2 aria-hidden="true" />
+              </Button>
+            </>
           ) : null}
         </div>
       </header>
@@ -560,4 +579,60 @@ function isStoredChatTurn(value: unknown): value is StoredChatTurn {
       turn.status === "stopped" ||
       turn.status === "error")
   );
+}
+
+function formatChatDiagnosticExport(turns: ChatTurn[]): string {
+  const lines = [
+    "# AGN chat diagnostic export",
+    "",
+    `Exported: ${new Date().toISOString()}`,
+    `Turns: ${turns.length}`,
+  ];
+
+  turns.forEach((turn, turnIndex) => {
+    lines.push(
+      "",
+      `## Turn ${turnIndex + 1}`,
+      "",
+      `Status: ${turn.status}`,
+      "",
+      "### User",
+      "",
+      turn.question || "(empty)",
+      "",
+      "### AGN",
+      "",
+      turn.answer || "(no answer)",
+      "",
+      `### Retrieved source chunks (${turn.sources.length})`,
+    );
+
+    if (turn.sources.length === 0) {
+      lines.push("", "(none)");
+      return;
+    }
+
+    turn.sources.forEach((source, sourceIndex) => {
+      lines.push(
+        "",
+        `#### Chunk ${sourceIndex + 1}`,
+        "",
+        `- ID: ${source.id}`,
+        `- Deck: ${source.deckTitle} (${source.deckId})`,
+        `- Source: ${source.sourceLabel ?? "Unlabeled"} — ${source.sourceTitle}`,
+        `- Original path: ${source.sourcePath}`,
+        `- Media type: ${source.sourceMediaType}`,
+        `- Global slide: ${source.slideNumber}`,
+        `- Source-local slide: ${source.sourceSlideNumber}`,
+        `- Slide title: ${source.slideTitle ?? "Untitled"}`,
+        `- Heading path: ${source.headingPath?.join(" / ") || "(none)"}`,
+        "",
+        "Retrieved text:",
+        "",
+        source.text,
+      );
+    });
+  });
+
+  return `${lines.join("\n")}\n`;
 }

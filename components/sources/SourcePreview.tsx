@@ -33,6 +33,7 @@ export function SourcePreview({
   onSelectSource,
 }: SourcePreviewProps) {
   const [isImageOpen, setIsImageOpen] = useState(false);
+  const [fullscreenImageUrl, setFullscreenImageUrl] = useState<string>();
   const deck = selectedSource
     ? decks.find((candidate) => candidate.id === selectedSource.deckId)
     : undefined;
@@ -70,6 +71,56 @@ export function SourcePreview({
     }
   }, [deck, imageUrl, onLoadSlideImage, slide]);
 
+  useEffect(() => {
+    if (!isImageOpen || !deck || slideIndex < 0) {
+      return;
+    }
+
+    for (const offset of [-1, 1]) {
+      const adjacentSlide = deck.slides[slideIndex + offset];
+
+      if (
+        adjacentSlide?.sourceNumber === slide?.sourceNumber &&
+        !deck.imageUrlsBySlideNumber[adjacentSlide.slideNumber]
+      ) {
+        void onLoadSlideImage(deck.id, adjacentSlide.slideNumber);
+      }
+    }
+  }, [deck, isImageOpen, onLoadSlideImage, slide, slideIndex]);
+
+  useEffect(() => {
+    if (!isImageOpen || !imageUrl) {
+      return;
+    }
+
+    let cancelled = false;
+    const image = new Image();
+    image.src = imageUrl;
+
+    void image
+      .decode()
+      .catch(() => undefined)
+      .then(() => {
+        if (!cancelled) {
+          setFullscreenImageUrl(imageUrl);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [imageUrl, isImageOpen]);
+
+  function openImage() {
+    setFullscreenImageUrl(imageUrl);
+    setIsImageOpen(true);
+  }
+
+  function closeImage() {
+    setIsImageOpen(false);
+    setFullscreenImageUrl(undefined);
+  }
+
   function selectSlideByOffset(offset: number) {
     if (!deck || slideIndex < 0) {
       return;
@@ -95,6 +146,7 @@ export function SourcePreview({
     function handleFullscreenKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
         setIsImageOpen(false);
+        setFullscreenImageUrl(undefined);
         return;
       }
 
@@ -198,7 +250,7 @@ export function SourcePreview({
                 type="button"
                 className="group relative block w-full cursor-zoom-in rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 aria-label={`Enlarge slide ${slide.slideNumber}`}
-                onClick={() => setIsImageOpen(true)}
+                onClick={openImage}
               >
                 {/* Object URLs cannot use Next image optimization. */}
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -244,19 +296,18 @@ export function SourcePreview({
           </section>
         </div>
       )}
-      {isImageOpen && imageUrl && deck && slide ? (
+      {isImageOpen && deck && slide ? (
         <div
           className="fixed inset-0 z-50 flex flex-col bg-black/95 p-3 sm:p-6"
           role="dialog"
           aria-modal="true"
           aria-label={`Slide ${slide.slideNumber} image`}
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) {
-              setIsImageOpen(false);
-            }
-          }}
+          onMouseDown={closeImage}
         >
-          <div className="mb-3 flex items-center justify-between gap-3 text-sm text-white/80">
+          <div
+            className="mb-3 flex items-center justify-between gap-3 text-sm text-white/80"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
             <div className="min-w-0">
               <p className="truncate">{deck.manifest.title}</p>
               <p className="text-xs text-white/50">
@@ -268,7 +319,7 @@ export function SourcePreview({
               variant="ghost"
               size="icon"
               aria-label="Close enlarged slide"
-              onClick={() => setIsImageOpen(false)}
+              onClick={closeImage}
             >
               <X aria-hidden="true" />
             </Button>
@@ -281,16 +332,25 @@ export function SourcePreview({
               className="absolute left-1 z-10 rounded-full border border-white/15 bg-black/55 text-white shadow-xl backdrop-blur-md hover:bg-black/75 disabled:invisible sm:left-3"
               disabled={isFirstSlide}
               aria-label="Previous slide"
+              onMouseDown={(event) => event.stopPropagation()}
               onClick={() => selectSlideByOffset(-1)}
             >
               <ChevronLeft aria-hidden="true" />
             </Button>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={imageUrl}
-              alt={`Slide ${slide.slideNumber} from ${deck.manifest.title}`}
-              className="max-h-full max-w-full object-contain"
-            />
+            {fullscreenImageUrl ? (
+              <>
+                {/* Object URLs cannot use Next image optimization. */}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={fullscreenImageUrl}
+                  alt={`Slide ${slide.slideNumber} from ${deck.manifest.title}`}
+                  className="max-h-full max-w-full object-contain"
+                  onMouseDown={(event) => event.stopPropagation()}
+                />
+              </>
+            ) : (
+              <div className="text-sm text-white/55">Loading slide…</div>
+            )}
             <Button
               type="button"
               variant="secondary"
@@ -298,6 +358,7 @@ export function SourcePreview({
               className="absolute right-1 z-10 rounded-full border border-white/15 bg-black/55 text-white shadow-xl backdrop-blur-md hover:bg-black/75 disabled:invisible sm:right-3"
               disabled={isLastSlide}
               aria-label="Next slide"
+              onMouseDown={(event) => event.stopPropagation()}
               onClick={() => selectSlideByOffset(1)}
             >
               <ChevronRight aria-hidden="true" />
