@@ -9,7 +9,7 @@ test("renders the responsive notebook workspace", async ({ page }, testInfo) => 
   await expect(
     page.getByRole("heading", { name: "Ask about your library" }),
   ).toBeVisible();
-  await expect(page.getByText("DeepInfra", { exact: true })).toBeVisible();
+  await expect(page.getByText("Providers", { exact: true })).toBeVisible();
 
   if (testInfo.project.name === "mobile-chromium") {
     await page.getByRole("button", { name: "Sources" }).click();

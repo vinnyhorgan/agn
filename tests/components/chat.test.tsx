@@ -44,7 +44,7 @@ describe("chat interactions", () => {
     const user = userEvent.setup();
 
     render(<ChatPanel sourceChunks={[]} />);
-    await user.click(screen.getByText("DeepInfra"));
+    await user.click(screen.getByText("Providers"));
 
     const input = screen.getByLabelText("DeepInfra API key") as HTMLInputElement;
     expect(input.value).toBe("saved-key");
@@ -55,6 +55,21 @@ describe("chat interactions", () => {
     await waitFor(() => {
       expect(window.localStorage.getItem("agn.deepInfra.apiKey")).toBe(
         "replacement-key",
+      );
+    });
+  });
+
+  it("stores the optional Tavily key only in browser localStorage", async () => {
+    const user = userEvent.setup();
+    render(<ChatPanel sourceChunks={[]} />);
+    await user.click(screen.getByText("Providers"));
+
+    const input = screen.getByLabelText("Tavily API key");
+    await user.type(input, "tvly-test-key");
+
+    await waitFor(() => {
+      expect(window.localStorage.getItem("agn.tavily.apiKey")).toBe(
+        "tvly-test-key",
       );
     });
   });

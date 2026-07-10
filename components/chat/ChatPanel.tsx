@@ -15,9 +15,19 @@ import {
   streamDeepInfraChatCompletionViaRoute,
 } from "@/lib/llm/openAiCompatible";
 import type { DeepInfraSettings, LibrarySource } from "@/lib/llm/types";
-import { retrieveSourceChunks } from "@/lib/search/retrieveSources";
+import {
+  getRetrievalMode,
+  retrieveSourceChunks,
+} from "@/lib/search/retrieveSources";
 import type { SourceChunk } from "@/lib/search/types";
 import { cn } from "@/lib/utils";
+import { repairWebCitations } from "@/lib/web/citations";
+import {
+  isExplicitWebSearch,
+  searchWebViaRoute,
+  shouldSearchWeb,
+} from "@/lib/web/tavily";
+import type { WebSearchResult } from "@/lib/web/types";
 
 interface ChatPanelProps {
   sourceChunks: SourceChunk[];
@@ -37,6 +47,7 @@ interface ChatTurn {
   question: string;
   answer: string;
   sources: SourceChunk[];
+  webResults: WebSearchResult[];
   status: ChatTurnStatus;
 }
 
@@ -45,6 +56,7 @@ interface StoredChatTurn {
   question: string;
   answer: string;
   sourceIds: string[];
+  webResults?: WebSearchResult[];
   status: Exclude<ChatTurnStatus, "streaming">;
 }
 
@@ -52,6 +64,8 @@ const historyLimit = 6;
 const storedTurnLimit = 40;
 const deepInfraApiKeyStorageKey = "agn.deepInfra.apiKey";
 const deepInfraApiKeyChangedEvent = "agn:deepinfra-api-key-changed";
+const tavilyApiKeyStorageKey = "agn.tavily.apiKey";
+const tavilyApiKeyChangedEvent = "agn:tavily-api-key-changed";
 const chatHistoryStorageKey = "agn.chat.history";
 const chatHistoryChangedEvent = "agn:chat-history-changed";
 const missingApiKeyMessage = "Add a valid DeepInfra API key before chatting.";
@@ -65,6 +79,11 @@ export function ChatPanel({
   const storedApiKey = useSyncExternalStore(
     subscribeToStoredDeepInfraApiKey,
     () => readStorage(deepInfraApiKeyStorageKey),
+    () => "",
+  );
+  const storedTavilyApiKey = useSyncExternalStore(
+    subscribeToStoredTavilyApiKey,
+    () => readStorage(tavilyApiKeyStorageKey),
     () => "",
   );
   const storedTurnsJson = useSyncExternalStore(
@@ -110,7 +129,13 @@ export function ChatPanel({
       return;
     }
 
+    if (isExplicitWebSearch(trimmedQuestion) && !storedTavilyApiKey.trim()) {
+      setError("Add a Tavily API key before asking AGN to search the web.");
+      return;
+    }
+
     const currentTurns = turns;
+    const retrievalMode = getRetrievalMode(trimmedQuestion);
     const sources = retrieveSourceChunks({
       chunks: sourceChunks,
       query: trimmedQuestion,
@@ -121,6 +146,7 @@ export function ChatPanel({
       question: trimmedQuestion,
       answer: "",
       sources,
+      webResults: [],
       status: "streaming",
     };
     const nextTurns = [...currentTurns, pendingTurn];
@@ -134,11 +160,30 @@ export function ChatPanel({
     setError(undefined);
 
     try {
+      const webResults =
+        shouldSearchWeb(trimmedQuestion) && storedTavilyApiKey.trim()
+          ? await searchWebViaRoute({
+              apiKey: storedTavilyApiKey,
+              query: trimmedQuestion,
+              signal: abortController.signal,
+            })
+          : [];
+      pendingTurn.webResults = webResults;
+      setSessionTurns((current) =>
+        (current ?? nextTurns).map((turn) =>
+          turn.id === pendingTurn.id ? { ...turn, webResults } : turn,
+        ),
+      );
       const messages = buildGroundedMessages({
         question: trimmedQuestion,
         sourceChunks: sources,
-        librarySources,
+        librarySources: selectCatalogForRequest(
+          librarySources,
+          sources,
+          retrievalMode,
+        ),
         runtimeModel: `${DEEPINFRA_MODEL} via DeepInfra`,
+        webResults,
         history: currentTurns
           .filter((turn) => turn.answer && turn.status !== "error")
           .slice(-historyLimit)
@@ -161,7 +206,7 @@ export function ChatPanel({
       });
       const completedTurn: ChatTurn = {
         ...pendingTurn,
-        answer: repairModelCitations(response.content, sources),
+        answer: repairAnswerCitations(response.content, sources, webResults),
         status: "complete",
       };
       const completedTurns = [...currentTurns, completedTurn];
@@ -171,7 +216,11 @@ export function ChatPanel({
       const wasStopped = abortController.signal.aborted;
       const interruptedTurn: ChatTurn = {
         ...pendingTurn,
-        answer: repairModelCitations(streamedAnswer, sources),
+        answer: repairAnswerCitations(
+          streamedAnswer,
+          sources,
+          pendingTurn.webResults,
+        ),
         status: wasStopped ? "stopped" : "error",
       };
       const interruptedTurns = [...currentTurns, interruptedTurn];
@@ -250,9 +299,11 @@ export function ChatPanel({
           </Badge>
           <ProviderSettings
             settings={settings}
+            tavilyApiKey={storedTavilyApiKey}
             onChange={(nextSettings) =>
               writeStoredApiKey(nextSettings.apiKey)
             }
+            onTavilyApiKeyChange={writeStoredTavilyApiKey}
           />
           {turns.length > 0 ? (
             <>
@@ -411,7 +462,28 @@ function ChatTurnView({
       {turn.sources.length > 0 && turn.status !== "streaming" ? (
         <RetrievedSources sources={turn.sources} onSelectSource={onSelectSource} />
       ) : null}
+      {turn.webResults.length > 0 && turn.status !== "streaming" ? (
+        <WebSources results={turn.webResults} />
+      ) : null}
     </article>
+  );
+}
+
+function WebSources({ results }: { results: WebSearchResult[] }) {
+  return (
+    <div className="mr-auto flex max-w-[94%] flex-wrap gap-1.5">
+      {results.map((result, index) => (
+        <a
+          key={result.url}
+          href={result.url}
+          target="_blank"
+          rel="noreferrer"
+          className="min-w-0 max-w-full truncate rounded-full border border-border bg-card px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:border-primary/30 hover:bg-accent hover:text-accent-foreground"
+        >
+          Web {index + 1} · {result.title}
+        </a>
+      ))}
+    </div>
   );
 }
 
@@ -473,6 +545,10 @@ function writeStoredApiKey(apiKey: string) {
   writeStorage(deepInfraApiKeyStorageKey, apiKey, deepInfraApiKeyChangedEvent);
 }
 
+function writeStoredTavilyApiKey(apiKey: string) {
+  writeStorage(tavilyApiKeyStorageKey, apiKey, tavilyApiKeyChangedEvent);
+}
+
 function writeStoredTurns(turns: ChatTurn[]) {
   const completedTurns = turns
     .filter(
@@ -488,6 +564,7 @@ function writeStoredTurns(turns: ChatTurn[]) {
       question: turn.question,
       answer: turn.answer,
       sourceIds: turn.sources.map((source) => source.id),
+      webResults: turn.webResults,
       status: turn.status,
     }));
   writeStorage(
@@ -514,6 +591,14 @@ function subscribeToStoredDeepInfraApiKey(onStoreChange: () => void) {
   return subscribeToStorage(
     deepInfraApiKeyStorageKey,
     deepInfraApiKeyChangedEvent,
+    onStoreChange,
+  );
+}
+
+function subscribeToStoredTavilyApiKey(onStoreChange: () => void) {
+  return subscribeToStorage(
+    tavilyApiKeyStorageKey,
+    tavilyApiKeyChangedEvent,
     onStoreChange,
   );
 }
@@ -565,6 +650,7 @@ function parseStoredTurns(value: string, sourceChunks: SourceChunk[]): ChatTurn[
         sources: turn.sourceIds
           .map((sourceId) => chunksById.get(sourceId))
           .filter((source): source is SourceChunk => source !== undefined),
+        webResults: turn.webResults ?? [],
         status: turn.status,
       }));
   } catch {
@@ -584,9 +670,25 @@ function isStoredChatTurn(value: unknown): value is StoredChatTurn {
     typeof turn.answer === "string" &&
     Array.isArray(turn.sourceIds) &&
     turn.sourceIds.every((sourceId) => typeof sourceId === "string") &&
+    (turn.webResults === undefined ||
+      (Array.isArray(turn.webResults) && turn.webResults.every(isWebSearchResult))) &&
     (turn.status === "complete" ||
       turn.status === "stopped" ||
       turn.status === "error")
+  );
+}
+
+function isWebSearchResult(value: unknown): value is WebSearchResult {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const result = value as Partial<WebSearchResult>;
+  return (
+    typeof result.title === "string" &&
+    typeof result.url === "string" &&
+    typeof result.content === "string" &&
+    typeof result.score === "number"
   );
 }
 
@@ -630,30 +732,75 @@ function formatChatDiagnosticExport(
 
     if (turn.sources.length === 0) {
       lines.push("", "(none)");
-      return;
+    } else {
+      turn.sources.forEach((source, sourceIndex) => {
+        lines.push(
+          "",
+          `#### Chunk ${sourceIndex + 1}`,
+          "",
+          `- ID: ${source.id}`,
+          `- Deck: ${source.deckTitle} (${source.deckId})`,
+          `- Source: ${source.sourceLabel ?? "Unlabeled"} — ${source.sourceTitle}`,
+          `- Original path: ${source.sourcePath}`,
+          `- Media type: ${source.sourceMediaType}`,
+          `- Global slide: ${source.slideNumber}`,
+          `- Source-local slide: ${source.sourceSlideNumber}`,
+          `- Slide title: ${source.slideTitle ?? "Untitled"}`,
+          `- Heading path: ${source.headingPath?.join(" / ") || "(none)"}`,
+          "",
+          "Retrieved text:",
+          "",
+          source.text,
+        );
+      });
     }
 
-    turn.sources.forEach((source, sourceIndex) => {
-      lines.push(
-        "",
-        `#### Chunk ${sourceIndex + 1}`,
-        "",
-        `- ID: ${source.id}`,
-        `- Deck: ${source.deckTitle} (${source.deckId})`,
-        `- Source: ${source.sourceLabel ?? "Unlabeled"} — ${source.sourceTitle}`,
-        `- Original path: ${source.sourcePath}`,
-        `- Media type: ${source.sourceMediaType}`,
-        `- Global slide: ${source.slideNumber}`,
-        `- Source-local slide: ${source.sourceSlideNumber}`,
-        `- Slide title: ${source.slideTitle ?? "Untitled"}`,
-        `- Heading path: ${source.headingPath?.join(" / ") || "(none)"}`,
-        "",
-        "Retrieved text:",
-        "",
-        source.text,
-      );
-    });
+    lines.push("", `### Web search results (${turn.webResults.length})`);
+    if (turn.webResults.length === 0) {
+      lines.push("", "(none)");
+    } else {
+      turn.webResults.forEach((result, resultIndex) => {
+        lines.push(
+          "",
+          `#### Web ${resultIndex + 1}: ${result.title}`,
+          "",
+          `- URL: ${result.url}`,
+          `- Relevance score: ${result.score}`,
+          "",
+          result.content,
+        );
+      });
+    }
   });
 
   return `${lines.join("\n")}\n`;
+}
+
+function repairAnswerCitations(
+  answer: string,
+  sources: SourceChunk[],
+  webResults: WebSearchResult[],
+): string {
+  return repairWebCitations(repairModelCitations(answer, sources), webResults);
+}
+
+function selectCatalogForRequest(
+  librarySources: LibrarySource[],
+  sourceChunks: SourceChunk[],
+  retrievalMode: ReturnType<typeof getRetrievalMode>,
+): LibrarySource[] {
+  if (retrievalMode === "catalog" || retrievalMode === "overview") {
+    return librarySources;
+  }
+
+  if (retrievalMode === "none") {
+    return [];
+  }
+
+  const sourceLabels = new Set(
+    sourceChunks
+      .map((source) => source.sourceLabel)
+      .filter((label): label is string => Boolean(label)),
+  );
+  return librarySources.filter((source) => sourceLabels.has(source.sourceLabel));
 }

@@ -9,12 +9,16 @@ import { Input } from "@/components/ui/input";
 
 interface ProviderSettingsProps {
   settings: DeepInfraSettings;
+  tavilyApiKey: string;
   onChange: (settings: DeepInfraSettings) => void;
+  onTavilyApiKeyChange: (apiKey: string) => void;
 }
 
 export function ProviderSettings({
   settings,
+  tavilyApiKey,
   onChange,
+  onTavilyApiKeyChange,
 }: ProviderSettingsProps) {
   const containerRef = useRef<HTMLDetailsElement>(null);
   const [isOpen, setIsOpen] = useState(false);
@@ -65,8 +69,8 @@ export function ProviderSettings({
         }}
       >
         <KeyRound className="size-4 text-muted-foreground" aria-hidden="true" />
-        DeepInfra
-        {settings.apiKey ? (
+        Providers
+        {settings.apiKey && tavilyApiKey ? (
           <span className="size-1.5 rounded-full bg-primary" aria-label="API key saved" />
         ) : null}
       </summary>
@@ -100,6 +104,39 @@ export function ProviderSettings({
             </button>
           ) : null}
         </div>
+        <div className="my-3 border-t border-border" />
+        <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+          Tavily API key
+          <Input
+            value={tavilyApiKey}
+            type="password"
+            autoComplete="off"
+            placeholder="Optional web search"
+            className="border-border bg-muted/55 text-foreground focus-visible:border-primary/45 focus-visible:ring-ring/20"
+            onChange={(event) => onTavilyApiKeyChange(event.target.value)}
+          />
+        </label>
+        <div className="mt-2 flex items-center justify-between gap-2">
+          <p className="flex items-center gap-1.5 text-xs leading-5 text-muted-foreground">
+            {tavilyApiKey ? (
+              <CheckCircle2 className="size-3.5 text-primary" aria-hidden="true" />
+            ) : null}
+            {tavilyApiKey ? "Web search enabled" : "Only used when web evidence is needed"}
+          </p>
+          {tavilyApiKey ? (
+            <button
+              type="button"
+              className="flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-destructive"
+              onClick={() => onTavilyApiKeyChange("")}
+            >
+              <Trash2 className="size-3.5" aria-hidden="true" />
+              Forget
+            </button>
+          ) : null}
+        </div>
+        <p className="mt-3 text-[11px] leading-4 text-muted-foreground">
+          Both keys stay in this browser and are sent only for their respective requests.
+        </p>
       </div>
     </details>
   );

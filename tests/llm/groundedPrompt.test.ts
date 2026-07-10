@@ -60,12 +60,11 @@ describe("grounded prompt construction", () => {
       question: "Hello",
       sourceChunks: [],
     });
-    const promptText = messages.map((message) => message.content).join("\n");
-
-    expect(promptText).toContain(
-      "No relevant uploaded source material was found for this message.",
-    );
-    expect(promptText).toContain("User question:\nHello");
+    expect(messages.at(-2)).toEqual({
+      role: "developer",
+      content: "Runtime model: Not specified",
+    });
+    expect(messages.at(-1)).toEqual({ role: "user", content: "Hello" });
   });
 
   it("includes the complete library catalog separately from retrieved evidence", () => {
@@ -85,14 +84,15 @@ describe("grounded prompt construction", () => {
         },
       ],
     });
-    const promptText = messages.at(-1)?.content ?? "";
+    const promptText = messages.at(-2)?.content ?? "";
 
     expect(promptText).toContain("Runtime model: test-model via DeepInfra");
     expect(promptText).toContain("Total uploaded sources: 1");
     expect(promptText).toContain("Source 29: Final exam");
-    expect(promptText).toContain(
-      "No relevant uploaded source material was found for this message.",
-    );
+    expect(messages.at(-1)).toEqual({
+      role: "user",
+      content: "Can you see every uploaded source?",
+    });
   });
 });
 
