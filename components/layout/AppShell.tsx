@@ -356,8 +356,8 @@ export function AppShell() {
   );
 
   return (
-    <main className="relative grid h-dvh min-h-0 grid-cols-1 overflow-hidden bg-background pb-14 text-foreground lg:grid-cols-[minmax(260px,300px)_minmax(0,1fr)_minmax(300px,360px)] lg:pb-0 xl:grid-cols-[minmax(280px,320px)_minmax(0,1fr)_minmax(320px,380px)]">
-      <div className={cn("min-h-0", mobilePane !== "sources" && "hidden", "lg:block")}>
+    <main className="relative grid h-dvh min-h-0 grid-cols-1 grid-rows-[minmax(0,1fr)] overflow-hidden bg-background pb-14 text-foreground lg:grid-cols-[minmax(260px,300px)_minmax(0,1fr)_minmax(300px,360px)] lg:pb-0 xl:grid-cols-[minmax(280px,320px)_minmax(0,1fr)_minmax(320px,380px)]">
+      <div className={cn("h-full min-h-0 overflow-hidden", mobilePane !== "sources" && "hidden", "lg:block")}>
         <SourceSidebar
           decks={decks}
           errors={errors}
@@ -373,7 +373,7 @@ export function AppShell() {
           onSelectSource={selectSource}
         />
       </div>
-      <div className={cn("min-h-0", mobilePane !== "chat" && "hidden", "lg:block")}>
+      <div className={cn("h-full min-h-0 overflow-hidden", mobilePane !== "chat" && "hidden", "lg:block")}>
         <ChatPanel
           sourceChunks={sourceChunks}
           sourceCount={decks.reduce(
@@ -383,7 +383,7 @@ export function AppShell() {
           onSelectSource={selectSource}
         />
       </div>
-      <div className={cn("min-h-0", mobilePane !== "preview" && "hidden", "lg:block")}>
+      <div className={cn("h-full min-h-0 overflow-hidden", mobilePane !== "preview" && "hidden", "lg:block")}>
         <SourcePreview
           decks={decks}
           sourceChunks={sourceChunks}

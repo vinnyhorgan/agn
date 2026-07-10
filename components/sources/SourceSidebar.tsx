@@ -119,7 +119,7 @@ export function SourceSidebar({
         </div>
       </div>
 
-      <div className="min-h-0 overflow-y-auto px-3 py-3">
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
         <div className="mb-2 flex items-center justify-between gap-2">
           <h2 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
             Sources

@@ -167,6 +167,44 @@ test("imports a mixed SIR v2 corpus and preserves source-local slides", async ({
   await expect(page.getByText("Slide 1 / 1", { exact: true })).toBeVisible();
 });
 
+test("keeps every workspace pane inside the viewport for a long source list", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-chromium");
+
+  await page.goto("/");
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "large-corpus.sir",
+    mimeType: "application/zip",
+    buffer: await createLongSirArchive(30),
+  });
+  await expect(page.getByText("Sources 1–30", { exact: true })).toBeVisible();
+
+  const paneBounds = await page.locator("main > div:visible").evaluateAll(
+    (panes) =>
+      panes.map((pane) => {
+        const bounds = pane.getBoundingClientRect();
+        return { top: bounds.top, bottom: bounds.bottom };
+      }),
+  );
+
+  expect(paneBounds).toHaveLength(3);
+  expect(paneBounds.every(({ top }) => top === 0)).toBe(true);
+  expect(
+    paneBounds.every(
+      ({ bottom }) => bottom === page.viewportSize()?.height,
+    ),
+  ).toBe(true);
+
+  const sidebarBounds = await page.locator("aside").first().evaluate((sidebar) => ({
+    clientHeight: sidebar.clientHeight,
+    scrollHeight: sidebar.scrollHeight,
+    searchBottom: sidebar.lastElementChild?.getBoundingClientRect().bottom,
+  }));
+  expect(sidebarBounds.scrollHeight).toBe(sidebarBounds.clientHeight);
+  expect(sidebarBounds.searchBottom).toBe(page.viewportSize()?.height);
+});
+
 async function createSirArchive(
   title: string,
   slideCount: number,
@@ -262,5 +300,54 @@ async function createMixedSirArchive(): Promise<Buffer> {
       ]),
     );
   }
+  return zip.generateAsync({ type: "nodebuffer" });
+}
+
+async function createLongSirArchive(sourceCount: number): Promise<Buffer> {
+  const zip = new JSZip();
+  zip.file(
+    "manifest.json",
+    JSON.stringify({
+      sir: 2,
+      title: "Large Corpus",
+      language: "en",
+      source_count: sourceCount,
+      slide_count: sourceCount,
+    }),
+  );
+  zip.file(
+    "sources.json",
+    JSON.stringify(
+      Array.from({ length: sourceCount }, (_, index) => ({
+        source: index + 1,
+        title: `Source document ${index + 1}`,
+        path: `sources/document-${index + 1}.pdf`,
+        type: "pdf",
+        language: "en",
+        slide_start: index + 1,
+        slide_count: 1,
+      })),
+    ),
+  );
+  zip.file(
+    "sir.md",
+    Array.from(
+      { length: sourceCount },
+      (_, index) =>
+        `<!-- slide: ${index + 1} -->\n# Document ${index + 1}\n\nSubstantive source content for document ${index + 1}.`,
+    ).join("\n\n"),
+  );
+  zip.folder("slides");
+
+  for (let index = 1; index <= sourceCount; index += 1) {
+    zip.file(
+      `slides/${String(index).padStart(4, "0")}.webp`,
+      new Uint8Array([
+        0x52, 0x49, 0x46, 0x46, 0x04, 0x00, 0x00, 0x00, 0x57, 0x45,
+        0x42, 0x50,
+      ]),
+    );
+  }
+
   return zip.generateAsync({ type: "nodebuffer" });
 }

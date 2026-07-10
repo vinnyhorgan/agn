@@ -29,7 +29,7 @@ export function SourceSearch({
   const trimmedQuery = query.trim();
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col border-t border-border px-3 py-3">
+    <section className="flex max-h-1/2 min-h-0 shrink-0 flex-col border-t border-border px-3 py-3">
       <div className="mb-2 flex items-center justify-between gap-2">
         <h2 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
           Search
