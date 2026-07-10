@@ -7,7 +7,7 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans);
+  --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
   --font-heading: var(--font-sans);
   --color-sidebar-ring: var(--sidebar-ring);
@@ -123,8 +123,20 @@
   }
   body {
     @apply bg-background text-foreground;
+    text-rendering: optimizeLegibility;
   }
   html {
     @apply font-sans;
+  }
+}
+
+@layer base {
+  ::selection {
+    background: color-mix(in oklab, oklch(0.845 0.143 164.978) 35%, transparent);
+  }
+
+  * {
+    scrollbar-color: oklch(0.37 0 0) transparent;
+    scrollbar-width: thin;
   }
 }

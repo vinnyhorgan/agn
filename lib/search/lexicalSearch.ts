@@ -1,63 +1,94 @@
+import MiniSearch, {
+  type SearchResult as MiniSearchResult,
+} from "minisearch";
+
 import type { SearchResult, SourceChunk } from "@/lib/search/types";
 
 const maxResults = 10;
 const snippetRadius = 90;
+const searchIndexCache = new WeakMap<SourceChunk[], SearchIndex>();
+
+interface IndexedChunk {
+  id: string;
+  slideTitle: string;
+  heading: string;
+  text: string;
+}
+
+interface SearchIndex {
+  engine: MiniSearch<IndexedChunk>;
+  chunksById: Map<string, SourceChunk>;
+}
 
 export function lexicalSearch(
   chunks: SourceChunk[],
   query: string,
   limit = maxResults,
 ): SearchResult[] {
-  const terms = uniqueTokens(tokenize(query));
-
-  if (terms.length === 0) {
+  if (!query.trim() || chunks.length === 0 || limit <= 0) {
     return [];
   }
 
-  return chunks
-    .map((chunk) => scoreChunk(chunk, terms))
+  const { engine, chunksById } = getSearchIndex(chunks);
+
+  return engine
+    .search(query, {
+      boost: { slideTitle: 4, heading: 2.5, text: 1 },
+      combineWith: "OR",
+      prefix: (term) => term.length >= 3,
+      fuzzy: (term) => (term.length >= 6 ? 0.15 : false),
+    })
+    .map((result) => toSearchResult(result, chunksById))
     .filter((result): result is SearchResult => result !== undefined)
     .sort(compareResults)
     .slice(0, limit);
 }
 
-function scoreChunk(
-  chunk: SourceChunk,
-  terms: string[],
-): SearchResult | undefined {
-  const textTokens = tokenize(chunk.text);
-  const titleTokens = tokenize(chunk.slideTitle ?? "");
-  const headingTokens = tokenize(chunk.headingPath?.join(" ") ?? "");
-  const matchedTerms: string[] = [];
-  let score = 0;
+function getSearchIndex(chunks: SourceChunk[]): SearchIndex {
+  const cached = searchIndexCache.get(chunks);
 
-  for (const term of terms) {
-    const bodyMatches = countTokenMatches(textTokens, term);
-    const titleMatches = countTokenMatches(titleTokens, term);
-    const headingMatches = countTokenMatches(headingTokens, term);
-    const totalMatches = bodyMatches + titleMatches + headingMatches;
-
-    if (totalMatches === 0) {
-      continue;
-    }
-
-    matchedTerms.push(term);
-    score += 6;
-    score += Math.min(bodyMatches, 5);
-    score += titleMatches * 3;
-    score += headingMatches * 2;
+  if (cached) {
+    return cached;
   }
 
-  if (matchedTerms.length === 0) {
+  const engine = new MiniSearch<IndexedChunk>({
+    idField: "id",
+    fields: ["slideTitle", "heading", "text"],
+    tokenize,
+    processTerm: (term) => term.normalize("NFKC").toLocaleLowerCase(),
+  });
+  const chunksById = new Map(chunks.map((chunk) => [chunk.id, chunk]));
+
+  engine.addAll(
+    chunks.map((chunk) => ({
+      id: chunk.id,
+      slideTitle: chunk.slideTitle ?? "",
+      heading: chunk.headingPath?.join(" ") ?? "",
+      text: chunk.text,
+    })),
+  );
+
+  const index = { engine, chunksById };
+  searchIndexCache.set(chunks, index);
+
+  return index;
+}
+
+function toSearchResult(
+  result: MiniSearchResult,
+  chunksById: Map<string, SourceChunk>,
+): SearchResult | undefined {
+  const chunk = chunksById.get(String(result.id));
+
+  if (!chunk) {
     return undefined;
   }
 
-  score += matchedTerms.length * 8;
-  score += (matchedTerms.length / terms.length) * 12;
+  const matchedTerms = Object.keys(result.match);
 
   return {
     chunk,
-    score,
+    score: result.score,
     matchedTerms,
     snippet: createSnippet(chunk.text, matchedTerms),
   };
@@ -82,9 +113,9 @@ function createSnippet(text: string, terms: string[]): string {
     return normalized;
   }
 
-  const lowerText = normalized.toLowerCase();
+  const lowerText = normalized.toLocaleLowerCase();
   const firstMatchIndex = terms.reduce<number | undefined>((best, term) => {
-    const index = lowerText.indexOf(term.toLowerCase());
+    const index = lowerText.indexOf(term.toLocaleLowerCase());
 
     if (index === -1) {
       return best;
@@ -101,28 +132,6 @@ function createSnippet(text: string, terms: string[]): string {
   return `${prefix}${normalized.slice(start, end).trim()}${suffix}`;
 }
 
-function countTokenMatches(tokens: string[], term: string): number {
-  return tokens.reduce((count, token) => {
-    if (token === term) {
-      return count + 1;
-    }
-
-    if (term.length >= 4 && token.startsWith(term)) {
-      return count + 1;
-    }
-
-    return count;
-  }, 0);
-}
-
 function tokenize(text: string): string[] {
-  return text
-    .toLowerCase()
-    .split(/[^a-z0-9]+/)
-    .map((token) => token.trim())
-    .filter((token) => token.length > 0);
-}
-
-function uniqueTokens(tokens: string[]): string[] {
-  return Array.from(new Set(tokens));
+  return text.normalize("NFKC").match(/[\p{L}\p{N}]+/gu) ?? [];
 }

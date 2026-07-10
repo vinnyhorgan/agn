@@ -16,7 +16,7 @@ describe("grounded prompt construction", () => {
     expect(promptText).toContain("Heading path: Photosynthesis > Chlorophyll");
   });
 
-  it("prioritizes SIR sources without blocking general answers", () => {
+  it("gives SIR sources highest priority without blocking general answers", () => {
     const messages = buildGroundedMessages({
       question: "What is ATP?",
       sourceChunks: [createChunk()],
@@ -24,14 +24,35 @@ describe("grounded prompt construction", () => {
     const systemMessage = messages[0]?.content ?? "";
 
     expect(systemMessage).toContain(
-      "When SIR source excerpts are provided and relevant, prioritize them over general knowledge.",
+      "Uploaded SIR excerpts are your highest-priority evidence.",
     );
     expect(systemMessage).toContain(
-      "If the provided SIR excerpts do not contain enough support, answer normally using general knowledge.",
+      "you may supplement with general knowledge",
     );
     expect(systemMessage).toContain(
-      "Cite slide numbers for claims that rely on SIR source excerpts.",
+      "[Source N, Slide M]",
     );
+  });
+
+  it("includes recent conversation turns before the current question", () => {
+    const messages = buildGroundedMessages({
+      question: "Can you expand on that?",
+      sourceChunks: [createChunk()],
+      history: [
+        {
+          question: "What is chlorophyll?",
+          answer: "It absorbs light energy. [Source 1, Slide 3]",
+        },
+      ],
+    });
+
+    expect(messages.slice(1, 3)).toEqual([
+      { role: "user", content: "What is chlorophyll?" },
+      {
+        role: "assistant",
+        content: "It absorbs light energy. [Source 1, Slide 3]",
+      },
+    ]);
   });
 
   it("handles messages with no retrieved source chunks", () => {

@@ -14,6 +14,12 @@ export interface DeepInfraSettings {
 export interface GroundedPromptInput {
   question: string;
   sourceChunks: SourceChunk[];
+  history?: ConversationTurn[];
+}
+
+export interface ConversationTurn {
+  question: string;
+  answer: string;
 }
 
 export interface ChatCompletionRequest {

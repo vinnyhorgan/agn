@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { BookOpen, ChevronLeft, ChevronRight } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -76,7 +76,7 @@ export function SourcePreview({
           <h2 className="truncate text-sm font-semibold text-zinc-50">
             Source preview
           </h2>
-          <p className="truncate text-xs text-zinc-500">
+          <p className="truncate text-xs text-zinc-400">
             Inspect cited slides and retrieved chunks.
           </p>
         </div>
@@ -85,6 +85,7 @@ export function SourcePreview({
       {!selectedSource || !deck || !slide ? (
         <div className="flex flex-1 items-center justify-center p-6 text-center">
           <div>
+            <BookOpen className="mx-auto size-8 text-zinc-700" aria-hidden="true" />
             <h3 className="text-sm font-medium text-zinc-100">
               No source selected
             </h3>
@@ -136,7 +137,7 @@ export function SourcePreview({
             </Button>
           </div>
 
-          <section className="mt-4 rounded-lg border border-zinc-800 bg-zinc-900 p-2">
+          <section className="mt-4 overflow-hidden rounded-lg border border-zinc-800 bg-black/40 p-2 shadow-inner">
             {imageUrl ? (
               // Object URLs are created in browser state and are not compatible
               // with Next image optimization.
@@ -144,7 +145,7 @@ export function SourcePreview({
               <img
                 src={imageUrl}
                 alt={`Slide ${slide.slideNumber} from ${deck.manifest.title}`}
-                className="max-h-56 w-full rounded-md object-contain"
+                className="max-h-[42dvh] w-full rounded-md object-contain"
               />
             ) : (
               <p className="px-3 py-8 text-center text-sm text-zinc-500">

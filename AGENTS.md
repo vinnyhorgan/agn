@@ -2,7 +2,7 @@
 
 AGN means Actually-Good-Notebook.
 
-AGN is a source-grounded learning web app. It consumes SIR files, indexes their slide content, and lets users chat with a text-only LLM over those sources.
+AGN is a source-prioritized learning web app. It consumes SIR files, indexes their slide content, and lets users chat with a text-only LLM with those sources as its highest-priority context.
 
 ## Current phase
 
@@ -74,11 +74,9 @@ slides/0017.webp
 
 ## Product rule
 
-AGN must be source-grounded by default.
+AGN should behave like a capable general chat assistant while giving uploaded SIR sources the highest priority.
 
-The app should answer from uploaded SIR sources only unless the user explicitly asks for outside knowledge.
-
-If the answer is not present in the uploaded sources, the assistant must say that it is not in the sources.
+When uploaded sources support an answer, use and cite them. When the sources are insufficient, the assistant may answer from general knowledge but should briefly distinguish that information from uploaded-source content.
 
 ## SIR validation rules
 
@@ -114,30 +112,19 @@ Every indexed source chunk must retain enough metadata to map back to:
 
 ## Chat rules
 
-All model answers must be grounded in retrieved source chunks.
-
-The model must cite slide numbers for substantive claims.
+Claims based on retrieved source chunks must cite their source label and slide number.
 
 The app should reject or repair model citations that do not map to real slides.
 
-The model must not browse the web or use outside knowledge by default.
+The model may use its own general knowledge when retrieved sources are insufficient. Web browsing is not part of the current product.
 
 ## LLM provider rules
 
-AGN supports BYOK.
-
-Do not hardcode one model provider.
-
-Create provider adapters behind a common interface.
-
-Initial target:
-
-- OpenAI-compatible chat completion API
-- OpenRouter-compatible configuration
+AGN supports BYOK with DeepInfra as the only provider in the current phase.
 
 Never log API keys.
 
-Do not store API keys by default during the MVP.
+Store the user's DeepInfra API key in browser localStorage so it persists between sessions. Never persist it on the server.
 
 ## Engineering rules
 

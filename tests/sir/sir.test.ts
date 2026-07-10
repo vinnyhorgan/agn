@@ -113,6 +113,14 @@ describe("SIR v1 validation", () => {
 
     expectErrorCode(result, "unexpected_slide_image");
   });
+
+  it("rejects a file with a WebP extension but invalid contents", async () => {
+    const input = await createSirArchive({ useInvalidImageBytes: true });
+
+    const result = await validateSirFile(input);
+
+    expectErrorCode(result, "invalid_slide_image_format");
+  });
 });
 
 describe("SIR v1 parsing", () => {
@@ -163,6 +171,7 @@ interface CreateSirArchiveOptions {
   markdown?: string;
   slideImages?: string[];
   extraRootFiles?: string[];
+  useInvalidImageBytes?: boolean;
 }
 
 async function createSirArchive({
@@ -183,6 +192,7 @@ async function createSirArchive({
 `,
   slideImages = ["slides/0001.webp", "slides/0002.webp"],
   extraRootFiles = [],
+  useInvalidImageBytes = false,
 }: CreateSirArchiveOptions = {}): Promise<Uint8Array> {
   const zip = new JSZip();
 
@@ -196,7 +206,15 @@ async function createSirArchive({
 
   zip.folder("slides");
   for (const imagePath of slideImages) {
-    zip.file(imagePath, new Uint8Array([1, 2, 3]));
+    zip.file(
+      imagePath,
+      useInvalidImageBytes
+        ? new Uint8Array([1, 2, 3])
+        : new Uint8Array([
+            0x52, 0x49, 0x46, 0x46, 0x04, 0x00, 0x00, 0x00, 0x57, 0x45,
+            0x42, 0x50,
+          ]),
+    );
   }
 
   for (const extraRootFile of extraRootFiles) {

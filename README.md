@@ -1,36 +1,50 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AGN
 
-## Getting Started
+Actually-Good-Notebook is a local-first learning workspace for SIR slide decks. Upload `.sir` archives, search and inspect their slides, and chat with DeepInfra while giving uploaded material first priority.
 
-First, run the development server:
+## Current capabilities
+
+- Strict SIR v1 archive validation and parsing
+- Multi-deck slide viewing with local WebP previews
+- Unicode-aware lexical search with slide-level metadata
+- Multi-turn DeepInfra chat with source-prioritized context
+- Verified, clickable source and slide citations
+- Browser-persisted BYOK API key
+- Responsive source, chat, and preview workspace
+
+## Getting started
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
+pnpm install
 pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Checks
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm test:e2e
+pnpm build
+```
 
-## Learn More
+## SIR v1
 
-To learn more about Next.js, take a look at the following resources:
+A `.sir` file is a ZIP archive with this root structure:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```text
+manifest.json
+sir.md
+slides/
+  0001.webp
+  0002.webp
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+See [AGENTS.md](./AGENTS.md) for the complete format and engineering rules.
 
-## Deploy on Vercel
+## Privacy
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+SIR parsing, slide images, indexing, and retrieval stay in the browser. The DeepInfra API key is stored in browser `localStorage` and is sent through AGN's server route only when making a chat request. It is never persisted server-side or logged by application code.

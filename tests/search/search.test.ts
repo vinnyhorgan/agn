@@ -70,6 +70,29 @@ describe("lexical search", () => {
       "Chlorophyll",
     ]);
   });
+
+  it("searches non-Latin source text", () => {
+    const chunks = chunkSlides({
+      manifest: { sir: 1, title: "日本語", language: "ja", slide_count: 1 },
+      imagePaths: ["slides/0001.webp"],
+      slides: [
+        {
+          slideNumber: 1,
+          title: "光合成",
+          markdown: "# 光合成\n\n植物は光エネルギーを使います。",
+        },
+      ],
+    });
+
+    expect(lexicalSearch(chunks, "光合成")).toHaveLength(1);
+  });
+
+  it("supports prefix and conservative fuzzy matches", () => {
+    const chunks = chunkSlides(createParsedDeck());
+
+    expect(lexicalSearch(chunks, "chloro")[0]?.chunk.slideNumber).toBe(1);
+    expect(lexicalSearch(chunks, "mitocondria")[0]?.chunk.slideNumber).toBe(2);
+  });
 });
 
 function createParsedDeck(): ParsedSirFile {

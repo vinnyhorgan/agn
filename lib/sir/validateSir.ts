@@ -87,7 +87,7 @@ export async function validateSirFile(
 
   if (manifest) {
     validateSlideMarkers(slideMarkers, manifest.slide_count, errors);
-    validateSlideImages(entries, manifest.slide_count, errors);
+    await validateSlideImages(entries, manifest.slide_count, errors);
   }
 
   if (errors.length > 0) {
@@ -235,11 +235,23 @@ function validateSlideMarkers(
   }
 }
 
-function validateSlideImages(
+async function validateSlideImages(
   entries: JSZip.JSZipObject[],
   slideCount: number,
   errors: SirValidationError[],
 ) {
+  const unexpectedDirectories = entries.filter(
+    (entry) => entry.dir && entry.name.startsWith("slides/") && entry.name !== "slides/",
+  );
+
+  for (const directory of unexpectedDirectories) {
+    errors.push({
+      code: "unexpected_slides_entry",
+      message: `Unexpected directory "${directory.name}" inside slides/.`,
+      path: directory.name,
+    });
+  }
+
   const slideFiles = entries
     .filter((entry) => !entry.dir && entry.name.startsWith("slides/"))
     .map((entry) => entry.name);
@@ -273,6 +285,34 @@ function validateSlideImages(
       });
     }
   }
+
+  for (const path of slideFiles.filter((candidate) => expectedPaths.includes(candidate))) {
+    const file = entries.find((entry) => entry.name === path);
+
+    if (file && !(await hasWebPHeader(file))) {
+      errors.push({
+        code: "invalid_slide_image_format",
+        message: `Slide image "${path}" is not a valid WebP file.`,
+        path,
+      });
+    }
+  }
+}
+
+async function hasWebPHeader(file: JSZip.JSZipObject): Promise<boolean> {
+  const bytes = await file.async("uint8array");
+
+  return (
+    bytes.length >= 12 &&
+    bytes[0] === 0x52 &&
+    bytes[1] === 0x49 &&
+    bytes[2] === 0x46 &&
+    bytes[3] === 0x46 &&
+    bytes[8] === 0x57 &&
+    bytes[9] === 0x45 &&
+    bytes[10] === 0x42 &&
+    bytes[11] === 0x50
+  );
 }
 
 function expectedSlideImagePaths(slideCount: number): string[] {

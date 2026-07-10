@@ -53,8 +53,11 @@ export function SourceSidebar({
       <div className="border-b border-zinc-800 px-4 py-4">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <p className="text-lg font-semibold text-zinc-50">AGN</p>
-            <p className="text-xs text-zinc-500">Actually-Good-Notebook</p>
+            <p className="flex items-center gap-2 text-lg font-semibold text-zinc-50">
+              <span className="flex size-7 items-center justify-center rounded-md bg-emerald-300 text-xs font-black text-zinc-950">A</span>
+              AGN
+            </p>
+            <p className="text-xs text-zinc-400">Actually-Good-Notebook</p>
           </div>
           <Badge variant="outline" className="border-zinc-800 text-zinc-400">
             SIR
@@ -72,7 +75,7 @@ export function SourceSidebar({
         <div className="mt-4 grid grid-cols-2 gap-2">
           <Button
             type="button"
-            variant="secondary"
+            className="bg-emerald-300 text-zinc-950 hover:bg-emerald-200"
             disabled={isLoading}
             onClick={() => fileInputRef.current?.click()}
           >
@@ -116,7 +119,7 @@ export function SourceSidebar({
                   className={cn(
                     "rounded-lg border px-3 py-2 text-left transition-colors",
                     isSelected
-                      ? "border-zinc-500 bg-zinc-900"
+                      ? "border-emerald-500/50 bg-emerald-500/10"
                       : "border-zinc-800 bg-zinc-950 hover:bg-zinc-900",
                   )}
                   onClick={() =>
