@@ -29,26 +29,26 @@ export function SourceSearch({
   const trimmedQuery = query.trim();
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col border-t border-zinc-800 px-3 py-3">
+    <section className="flex min-h-0 flex-1 flex-col border-t border-border px-3 py-3">
       <div className="mb-2 flex items-center justify-between gap-2">
-        <h2 className="text-xs font-semibold uppercase tracking-normal text-zinc-500">
+        <h2 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
           Search
         </h2>
         {trimmedQuery ? (
-          <Badge variant="outline" className="border-zinc-800 text-zinc-400">
+          <Badge variant="outline" className="border-border text-muted-foreground">
             {resultCount}
           </Badge>
         ) : null}
       </div>
       <label className="relative block">
         <Search
-          className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-zinc-500"
+          className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
           aria-hidden="true"
         />
         <Input
           value={query}
           placeholder="Search slides"
-          className="border-zinc-800 bg-zinc-900 pl-8 text-zinc-100"
+          className="border-border bg-background/65 pl-8 text-foreground shadow-none focus-visible:border-primary/45 focus-visible:ring-ring/20"
           onChange={(event) => onQueryChange(event.target.value)}
         />
         <span className="sr-only">Search uploaded sources</span>
@@ -56,7 +56,7 @@ export function SourceSearch({
 
       <div className="mt-3 min-h-0 flex-1 overflow-y-auto pr-1">
         {!trimmedQuery ? (
-          <p className="text-sm leading-6 text-zinc-500">
+          <p className="text-sm leading-6 text-muted-foreground">
             Search slide titles and text across your local library.
           </p>
         ) : results.length > 0 ? (
@@ -76,8 +76,8 @@ export function SourceSearch({
                   className={cn(
                     "h-auto w-full justify-start whitespace-normal rounded-lg border px-3 py-2 text-left",
                     isSelected
-                      ? "border-zinc-500 bg-zinc-800 text-zinc-100"
-                      : "border-zinc-800 text-zinc-300 hover:bg-zinc-900",
+                      ? "border-primary/30 bg-accent/70 text-foreground"
+                      : "border-border bg-card/50 text-foreground/85 hover:border-primary/20 hover:bg-card",
                   )}
                   onClick={() =>
                     onSelectSource({
@@ -88,19 +88,19 @@ export function SourceSearch({
                   }
                 >
                   <span className="flex min-w-0 flex-col items-start gap-1">
-                    <span className="line-clamp-1 text-xs font-medium text-zinc-500">
+                    <span className="line-clamp-1 text-xs font-medium text-primary">
                       {result.chunk.sourceLabel
                         ? `${result.chunk.sourceLabel} · `
                         : ""}
                       {result.chunk.deckTitle}
                     </span>
-                    <span className="line-clamp-1 text-sm font-medium text-zinc-100">
+                    <span className="line-clamp-1 text-sm font-medium text-foreground">
                       Slide {result.chunk.slideNumber}
                       {result.chunk.slideTitle
                         ? ` · ${result.chunk.slideTitle}`
                         : ""}
                     </span>
-                    <span className="line-clamp-3 text-xs leading-5 text-zinc-400">
+                    <span className="line-clamp-3 text-xs leading-5 text-muted-foreground">
                       {result.snippet}
                     </span>
                   </span>
@@ -109,7 +109,7 @@ export function SourceSearch({
             })}
           </div>
         ) : (
-          <p className="text-sm leading-6 text-zinc-500">
+          <p className="text-sm leading-6 text-muted-foreground">
             No matching slides.
           </p>
         )}

@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "reac
 
 import { ChatMessage } from "@/components/chat/ChatMessage";
 import { ProviderSettings } from "@/components/chat/ProviderSettings";
+import { ThemeToggle } from "@/components/layout/ThemeToggle";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { repairModelCitations } from "@/lib/llm/citations";
@@ -213,18 +214,21 @@ export function ChatPanel({
   }
 
   return (
-    <section className="flex h-full min-h-0 flex-col bg-zinc-950">
-      <header className="flex min-h-14 items-center justify-between gap-2 border-b border-zinc-800 px-3 sm:gap-3 sm:px-4">
+    <section className="flex h-full min-h-0 flex-col bg-background">
+      <header className="flex min-h-14 items-center justify-between gap-2 border-b border-border bg-background/80 px-3 backdrop-blur-xl sm:gap-3 sm:px-4">
         <div className="min-w-0">
-          <h1 className="truncate text-sm font-semibold text-zinc-50">Chat</h1>
-          <p className="truncate text-xs text-zinc-500">
+          <h1 className="truncate text-sm font-semibold text-foreground">Chat</h1>
+          <p className="truncate text-xs text-muted-foreground">
             Sources are used first when relevant
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          <div className="lg:hidden">
+            <ThemeToggle />
+          </div>
           <Badge
             variant="outline"
-            className="hidden border-zinc-800 text-zinc-400 sm:inline-flex"
+            className="hidden border-border bg-card/60 text-muted-foreground sm:inline-flex"
           >
             {sourceCount ?? 0} source{(sourceCount ?? 0) === 1 ? "" : "s"}
           </Badge>
@@ -249,14 +253,17 @@ export function ChatPanel({
         </div>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-5 sm:px-4">
+      <div className="min-h-0 flex-1 overflow-y-auto bg-[radial-gradient(circle_at_50%_0%,color-mix(in_oklab,var(--primary)_5%,transparent),transparent_38%)] px-3 py-5 sm:px-4 sm:py-7">
         {turns.length === 0 ? (
           <div className="flex h-full min-h-[280px] items-center justify-center text-center">
             <div className="max-w-sm">
-              <h2 className="text-base font-semibold text-zinc-100">
+              <div className="mx-auto mb-4 flex size-10 items-center justify-center rounded-2xl border border-primary/15 bg-accent text-sm font-semibold text-primary shadow-sm">
+                A
+              </div>
+              <h2 className="text-base font-semibold text-foreground">
                 Ask about your library
               </h2>
-              <p className="mt-2 text-sm leading-6 text-zinc-400">
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
                 AGN prioritizes your slides, cites the source, and can still
                 answer beyond them when needed.
               </p>
@@ -276,15 +283,15 @@ export function ChatPanel({
         <div ref={conversationEndRef} />
       </div>
 
-      <footer className="border-t border-zinc-800 bg-zinc-950 px-3 py-3 sm:px-4">
+      <footer className="border-t border-border bg-background/90 px-3 py-3 backdrop-blur-xl sm:px-4 sm:py-4">
         {error ? (
-          <div className="mx-auto mb-3 flex max-w-3xl items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm leading-6 text-destructive">
+          <div className="mx-auto mb-3 flex max-w-3xl items-start gap-2 rounded-xl border border-destructive/25 bg-destructive/[0.07] px-3 py-2 text-sm leading-6 text-destructive">
             <AlertCircle className="mt-1 size-4 shrink-0" aria-hidden="true" />
             <span>{error}</span>
           </div>
         ) : null}
         <form
-          className="mx-auto flex max-w-3xl items-end gap-2 rounded-lg border border-zinc-700 bg-zinc-900 p-1.5 shadow-sm focus-within:border-zinc-500"
+          className="mx-auto flex max-w-3xl items-end gap-2 rounded-2xl border border-border bg-card p-2 shadow-[0_8px_30px_rgb(0_0_0/0.06)] transition-[border-color,box-shadow] focus-within:border-primary/45 focus-within:shadow-[0_10px_36px_rgb(0_0_0/0.09)] dark:shadow-[0_10px_34px_rgb(0_0_0/0.2)]"
           onSubmit={handleSubmit}
         >
           <label className="sr-only" htmlFor="chat-question">
@@ -298,7 +305,7 @@ export function ChatPanel({
               hasSources ? "Ask about your sources or anything else" : "Ask anything"
             }
             disabled={isLoading}
-            className="min-h-9 max-h-32 flex-1 resize-none bg-transparent px-2 py-1.5 text-sm leading-6 text-zinc-100 outline-none [field-sizing:content] placeholder:text-zinc-500 disabled:opacity-60"
+            className="min-h-9 max-h-32 flex-1 resize-none bg-transparent px-2 py-1.5 text-sm leading-6 text-foreground outline-none [field-sizing:content] placeholder:text-muted-foreground disabled:opacity-60"
             onKeyDown={handleQuestionKeyDown}
             onChange={(event) => setQuestion(event.target.value)}
           />
@@ -306,6 +313,7 @@ export function ChatPanel({
             type={isLoading ? "button" : "submit"}
             size="icon"
             variant={isLoading ? "secondary" : "default"}
+            className="rounded-xl"
             disabled={!isLoading && !question.trim()}
             aria-label={isLoading ? "Stop generation" : "Send question"}
             onClick={isLoading ? stopGeneration : undefined}
@@ -317,11 +325,6 @@ export function ChatPanel({
             )}
           </Button>
         </form>
-        <p className="mx-auto mt-1.5 max-w-3xl px-1 text-[11px] text-zinc-600">
-          {hasSources
-            ? "Uploaded sources stay in this browser."
-            : "Upload a SIR source for slide-aware answers."}
-        </p>
       </footer>
     </section>
   );
@@ -367,12 +370,12 @@ function ChatTurnView({
           onCitationClick={selectCitation}
         />
       ) : turn.status === "streaming" ? (
-        <div className="mr-auto flex items-center gap-1.5 px-1 py-2 text-sm text-zinc-500">
-          <span className="size-1.5 animate-pulse rounded-full bg-zinc-500" />
+        <div className="mr-auto flex items-center gap-1.5 px-1 py-2 text-sm text-muted-foreground">
+          <span className="size-1.5 animate-pulse rounded-full bg-primary" />
           Thinking
         </div>
       ) : (
-        <p className="mr-auto px-1 text-xs text-zinc-600">
+        <p className="mr-auto px-1 text-xs text-muted-foreground">
           {turn.status === "stopped" ? "Generation stopped" : "No response received"}
         </p>
       )}
@@ -408,7 +411,7 @@ function RetrievedSources({
           key={`${source.deckId}:${source.slideNumber}`}
           type="button"
           className={cn(
-            "min-w-0 max-w-full rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1 text-left text-xs text-zinc-400 transition-colors hover:border-zinc-600 hover:text-zinc-200",
+            "min-w-0 max-w-full rounded-full border border-border bg-card px-2.5 py-1 text-left text-xs text-muted-foreground transition-colors hover:border-primary/30 hover:bg-accent hover:text-accent-foreground",
             "focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none",
           )}
           onClick={() => onSelectSource(source)}
@@ -417,7 +420,7 @@ function RetrievedSources({
         </button>
       ))}
       {remainingCount > 0 ? (
-        <span className="px-1.5 py-1 text-xs text-zinc-600">
+        <span className="px-1.5 py-1 text-xs text-muted-foreground">
           +{remainingCount} more slides
         </span>
       ) : null}

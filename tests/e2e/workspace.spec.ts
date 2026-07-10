@@ -27,6 +27,22 @@ test("renders the responsive notebook workspace", async ({ page }, testInfo) => 
   }
 });
 
+test("toggles and persists the color theme", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-chromium");
+
+  await page.goto("/");
+  await page.evaluate(() => window.localStorage.setItem("agn.theme", "light"));
+  await page.reload();
+  await page.getByRole("button", { name: "Toggle color theme" }).click();
+  await expect(page.locator("html")).toHaveClass(/dark/);
+
+  await page.reload();
+  await expect(page.locator("html")).toHaveClass(/dark/);
+
+  await page.getByRole("button", { name: "Toggle color theme" }).click();
+  await expect(page.locator("html")).not.toHaveClass(/dark/);
+});
+
 test("persists unique decks and remembers each deck's slide", async ({
   page,
 }, testInfo) => {

@@ -308,7 +308,7 @@ export function AppShell() {
   }
 
   return (
-    <main className="dark relative grid h-dvh min-h-0 grid-cols-1 overflow-hidden bg-zinc-950 pb-14 text-zinc-50 lg:grid-cols-[minmax(260px,300px)_minmax(0,1fr)_minmax(300px,360px)] lg:pb-0 xl:grid-cols-[minmax(280px,320px)_minmax(0,1fr)_minmax(320px,380px)]">
+    <main className="relative grid h-dvh min-h-0 grid-cols-1 overflow-hidden bg-background pb-14 text-foreground lg:grid-cols-[minmax(260px,300px)_minmax(0,1fr)_minmax(300px,360px)] lg:pb-0 xl:grid-cols-[minmax(280px,320px)_minmax(0,1fr)_minmax(320px,380px)]">
       <div className={cn("min-h-0", mobilePane !== "sources" && "hidden", "lg:block")}>
         <SourceSidebar
           decks={decks}
@@ -408,15 +408,15 @@ function MobileNavigation({
   ];
 
   return (
-    <nav className="absolute inset-x-0 bottom-0 z-30 grid h-14 grid-cols-3 border-t border-zinc-800 bg-zinc-950/95 px-2 backdrop-blur lg:hidden">
+    <nav className="absolute inset-x-0 bottom-0 z-30 grid h-14 grid-cols-3 border-t border-border bg-background/90 px-2 shadow-[0_-8px_30px_rgb(0_0_0/0.06)] backdrop-blur-xl lg:hidden">
       {items.map(({ pane, label, icon: Icon }) => (
         <Button
           key={pane}
           type="button"
           variant="ghost"
           className={cn(
-            "h-full rounded-none text-xs text-zinc-500",
-            activePane === pane && "text-zinc-50",
+            "h-full rounded-none text-xs text-muted-foreground",
+            activePane === pane && "text-primary",
           )}
           onClick={() => onChange(pane)}
         >

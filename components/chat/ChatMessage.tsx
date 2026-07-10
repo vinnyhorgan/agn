@@ -26,14 +26,14 @@ export function ChatMessage({
       className={cn(
         "rounded-lg px-3.5 py-3",
         role === "user"
-          ? "ml-auto max-w-[88%] border border-zinc-700 bg-zinc-800 text-zinc-100 sm:max-w-[82%]"
-          : "mr-auto w-full max-w-[94%] px-1 text-zinc-100 sm:max-w-[90%]",
+          ? "ml-auto max-w-[88%] rounded-2xl rounded-br-md border border-primary/15 bg-accent text-accent-foreground shadow-sm sm:max-w-[82%]"
+          : "mr-auto w-full max-w-[94%] px-1 text-foreground sm:max-w-[90%]",
       )}
     >
       <div
         className={cn(
           "mb-1.5 text-xs font-semibold",
-          role === "user" ? "text-zinc-400" : "text-zinc-500",
+          role === "user" ? "text-primary/80" : "text-muted-foreground",
         )}
       >
         {role === "user" ? "You" : "AGN"}
@@ -43,28 +43,28 @@ export function ChatMessage({
           remarkPlugins={[remarkGfm]}
           components={{
             p: ({ children }) => (
-              <p className="mb-3 text-sm leading-6 text-zinc-200 last:mb-0">
+              <p className="mb-3 text-sm leading-6 text-foreground/90 last:mb-0">
                 {renderMarkdownChildren(children, validCitations, onCitationClick)}
               </p>
             ),
             li: ({ children }) => (
               <li>{renderMarkdownChildren(children, validCitations, onCitationClick)}</li>
             ),
-            ul: ({ children }) => <ul className="mb-3 list-disc space-y-1 pl-5 text-sm leading-6 text-zinc-200">{children}</ul>,
-            ol: ({ children }) => <ol className="mb-3 list-decimal space-y-1 pl-5 text-sm leading-6 text-zinc-200">{children}</ol>,
-            h1: ({ children }) => <h1 className="mb-2 mt-1 text-base font-semibold text-zinc-50">{children}</h1>,
-            h2: ({ children }) => <h2 className="mb-2 mt-3 text-sm font-semibold text-zinc-50">{children}</h2>,
-            h3: ({ children }) => <h3 className="mb-2 mt-3 text-sm font-semibold text-zinc-100">{children}</h3>,
-            code: ({ children }) => <code className="rounded bg-black/40 px-1 py-0.5 font-mono text-[0.85em] text-emerald-200">{children}</code>,
-            pre: ({ children }) => <pre className="mb-3 overflow-x-auto rounded-lg border border-zinc-800 bg-zinc-950 p-3 text-sm leading-6 [&_code]:bg-transparent [&_code]:p-0 [&_code]:text-zinc-200">{children}</pre>,
-            blockquote: ({ children }) => <blockquote className="mb-3 border-l-2 border-emerald-400 pl-3 text-zinc-400">{children}</blockquote>,
+            ul: ({ children }) => <ul className="mb-3 list-disc space-y-1 pl-5 text-sm leading-6 text-foreground/90 marker:text-primary">{children}</ul>,
+            ol: ({ children }) => <ol className="mb-3 list-decimal space-y-1 pl-5 text-sm leading-6 text-foreground/90 marker:text-primary">{children}</ol>,
+            h1: ({ children }) => <h1 className="mb-2 mt-1 text-base font-semibold text-foreground">{children}</h1>,
+            h2: ({ children }) => <h2 className="mb-2 mt-3 text-sm font-semibold text-foreground">{children}</h2>,
+            h3: ({ children }) => <h3 className="mb-2 mt-3 text-sm font-semibold text-foreground">{children}</h3>,
+            code: ({ children }) => <code className="rounded bg-accent px-1 py-0.5 font-mono text-[0.85em] text-accent-foreground">{children}</code>,
+            pre: ({ children }) => <pre className="mb-3 overflow-x-auto rounded-xl border border-border bg-muted/65 p-3 text-sm leading-6 [&_code]:bg-transparent [&_code]:p-0 [&_code]:text-foreground">{children}</pre>,
+            blockquote: ({ children }) => <blockquote className="mb-3 border-l-2 border-primary pl-3 text-muted-foreground">{children}</blockquote>,
             hr: () => null,
           }}
         >
           {content}
         </ReactMarkdown>
       ) : (
-        <div className="whitespace-pre-wrap text-sm leading-6 text-zinc-100">{content}</div>
+        <div className="whitespace-pre-wrap text-sm leading-6 text-foreground">{content}</div>
       )}
     </div>
   );
@@ -109,7 +109,7 @@ function renderCitationText(
       const badge = (
         <Badge
           variant={isValid ? "secondary" : "destructive"}
-          className="mx-1 border border-emerald-500/20 bg-emerald-500/15 align-baseline text-emerald-200 hover:bg-emerald-500/25"
+          className="mx-1 border border-primary/20 bg-accent align-baseline text-accent-foreground hover:bg-primary/15"
         >
           {citation}
         </Badge>

@@ -17,6 +17,19 @@ export const metadata: Metadata = {
   description: "Learn from your slide decks with source-prioritized AI chat.",
 };
 
+const themeScript = `
+  (() => {
+    try {
+      const storedTheme = localStorage.getItem("agn.theme");
+      const theme = storedTheme === "light" || storedTheme === "dark"
+        ? storedTheme
+        : matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      document.documentElement.classList.toggle("dark", theme === "dark");
+      document.documentElement.style.colorScheme = theme;
+    } catch {}
+  })();
+`;
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -26,7 +39,11 @@ export default function RootLayout({
     <html
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      suppressHydrationWarning
     >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+      </head>
       <body className="min-h-full flex flex-col" suppressHydrationWarning>
         {children}
       </body>

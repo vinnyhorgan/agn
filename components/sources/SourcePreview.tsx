@@ -11,6 +11,7 @@ import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
+import { ThemeToggle } from "@/components/layout/ThemeToggle";
 import type { BrowserSirDeck, SelectedSource } from "@/components/sources/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -87,26 +88,31 @@ export function SourcePreview({
   }
 
   return (
-    <aside className="flex h-full min-h-0 flex-col border-l border-zinc-800 bg-zinc-950">
-      <header className="flex min-h-14 items-center border-b border-zinc-800 px-4">
+    <aside className="flex h-full min-h-0 flex-col border-l border-border bg-sidebar text-sidebar-foreground">
+      <header className="flex min-h-14 items-center justify-between gap-3 border-b border-border px-4">
         <div className="min-w-0">
-          <h2 className="truncate text-sm font-semibold text-zinc-50">
+          <h2 className="truncate text-sm font-semibold text-foreground">
             Source preview
           </h2>
-          <p className="truncate text-xs text-zinc-400">
+          <p className="truncate text-xs text-muted-foreground">
             Inspect cited slides and retrieved chunks.
           </p>
+        </div>
+        <div className="lg:hidden">
+          <ThemeToggle />
         </div>
       </header>
 
       {!selectedSource || !deck || !slide ? (
         <div className="flex flex-1 items-center justify-center p-6 text-center">
           <div>
-            <BookOpen className="mx-auto size-8 text-zinc-700" aria-hidden="true" />
-            <h3 className="text-sm font-medium text-zinc-100">
+            <div className="mx-auto mb-3 flex size-11 items-center justify-center rounded-2xl border border-border bg-card shadow-sm">
+              <BookOpen className="size-5 text-primary" aria-hidden="true" />
+            </div>
+            <h3 className="text-sm font-medium text-foreground">
               No source selected
             </h3>
-            <p className="mt-2 text-sm leading-6 text-zinc-500">
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
               Select a search result, retrieved source, or citation to inspect
               the supporting slide.
             </p>
@@ -116,19 +122,19 @@ export function SourcePreview({
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
           <div className="flex flex-wrap gap-2">
             <Badge variant="secondary">{deck.sourceLabel}</Badge>
-            <Badge variant="outline" className="border-zinc-800 text-zinc-300">
+            <Badge variant="outline" className="border-border text-muted-foreground">
               Slide {slide.slideNumber}
             </Badge>
           </div>
 
-          <h3 className="mt-3 text-base font-semibold leading-6 text-zinc-50">
+          <h3 className="mt-3 text-base font-semibold leading-6 text-foreground">
             {deck.manifest.title}
           </h3>
-          <p className="mt-1 text-sm text-zinc-500">
+          <p className="mt-1 text-sm text-muted-foreground">
             {slide.title ?? "Untitled slide"}
           </p>
 
-          <div className="mt-3 flex items-center justify-between gap-2 rounded-lg border border-zinc-800 bg-zinc-900 px-2 py-2">
+          <div className="mt-3 flex items-center justify-between gap-2 rounded-xl border border-border bg-card/70 px-2 py-2 shadow-sm">
             <Button
               type="button"
               variant="ghost"
@@ -139,7 +145,7 @@ export function SourcePreview({
               <ChevronLeft aria-hidden="true" />
               Previous
             </Button>
-            <p className="shrink-0 text-xs font-medium text-zinc-300">
+            <p className="shrink-0 text-xs font-medium text-muted-foreground">
               Slide {slide.slideNumber} / {deck.manifest.slide_count}
             </p>
             <Button
@@ -154,11 +160,11 @@ export function SourcePreview({
             </Button>
           </div>
 
-          <section className="mt-4 overflow-hidden rounded-lg border border-zinc-800 bg-black/40 p-2 shadow-inner">
+          <section className="mt-4 overflow-hidden rounded-xl border border-border bg-muted/55 p-2 shadow-inner">
             {imageUrl ? (
               <button
                 type="button"
-                className="group relative block w-full cursor-zoom-in rounded-md outline-none focus-visible:ring-2 focus-visible:ring-zinc-500"
+                className="group relative block w-full cursor-zoom-in rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 aria-label={`Enlarge slide ${slide.slideNumber}`}
                 onClick={() => setIsImageOpen(true)}
               >
@@ -169,38 +175,38 @@ export function SourcePreview({
                   alt={`Slide ${slide.slideNumber} from ${deck.manifest.title}`}
                   className="max-h-[42dvh] w-full rounded-md object-contain"
                 />
-                <span className="absolute bottom-2 right-2 flex size-7 items-center justify-center rounded-md border border-white/10 bg-black/70 text-zinc-200 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                <span className="absolute bottom-2 right-2 flex size-7 items-center justify-center rounded-md border border-white/10 bg-black/70 text-white/90 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
                   <Maximize2 className="size-3.5" aria-hidden="true" />
                 </span>
               </button>
             ) : (
-              <p className="px-3 py-8 text-center text-sm text-zinc-500">
+              <p className="px-3 py-8 text-center text-sm text-muted-foreground">
                 No image preview is available for this slide.
               </p>
             )}
           </section>
 
           {chunk ? (
-            <section className="mt-4 rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2">
-              <h4 className="text-xs font-semibold uppercase tracking-normal text-zinc-500">
+            <section className="mt-4 rounded-xl border border-primary/15 bg-accent/55 px-3 py-2.5">
+              <h4 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-primary">
                 Retrieved chunk
               </h4>
               {chunk.headingPath?.length ? (
-                <p className="mt-1 text-xs text-zinc-500">
+                <p className="mt-1 text-xs text-muted-foreground">
                   {chunk.headingPath.join(" / ")}
                 </p>
               ) : null}
-              <p className="mt-2 text-sm leading-6 text-zinc-200">
+              <p className="mt-2 text-sm leading-6 text-foreground/90">
                 {chunk.text}
               </p>
             </section>
           ) : null}
 
           <section className="mt-4">
-            <h4 className="mb-2 text-xs font-semibold uppercase tracking-normal text-zinc-500">
+            <h4 className="mb-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
               Slide Markdown
             </h4>
-            <div className="rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2">
+            <div className="rounded-xl border border-border bg-card/60 px-3 py-2">
               <MarkdownContent markdown={slide.markdown} />
             </div>
           </section>
@@ -218,7 +224,7 @@ export function SourcePreview({
             }
           }}
         >
-          <div className="mb-3 flex items-center justify-between gap-3 text-sm text-zinc-300">
+          <div className="mb-3 flex items-center justify-between gap-3 text-sm text-white/80">
             <p className="truncate">
               {deck.manifest.title} · Slide {slide.slideNumber}
             </p>
@@ -248,7 +254,7 @@ export function SourcePreview({
 
 function MarkdownContent({ markdown }: { markdown: string }) {
   if (!markdown.trim()) {
-    return <p className="text-sm text-zinc-500">This slide has no Markdown.</p>;
+    return <p className="text-sm text-muted-foreground">This slide has no Markdown.</p>;
   }
 
   return (
@@ -256,63 +262,63 @@ function MarkdownContent({ markdown }: { markdown: string }) {
       remarkPlugins={[remarkGfm]}
       components={{
         h1: ({ children }) => (
-          <h1 className="mb-3 text-lg font-semibold leading-tight text-zinc-50">
+          <h1 className="mb-3 text-lg font-semibold leading-tight text-foreground">
             {children}
           </h1>
         ),
         h2: ({ children }) => (
-          <h2 className="mb-2 mt-4 text-base font-semibold leading-tight text-zinc-100">
+          <h2 className="mb-2 mt-4 text-base font-semibold leading-tight text-foreground">
             {children}
           </h2>
         ),
         h3: ({ children }) => (
-          <h3 className="mb-2 mt-3 text-sm font-semibold leading-tight text-zinc-100">
+          <h3 className="mb-2 mt-3 text-sm font-semibold leading-tight text-foreground">
             {children}
           </h3>
         ),
         p: ({ children }) => (
-          <p className="mb-3 text-sm leading-6 text-zinc-300">{children}</p>
+          <p className="mb-3 text-sm leading-6 text-foreground/85">{children}</p>
         ),
         ul: ({ children }) => (
-          <ul className="mb-3 list-disc space-y-1 pl-5 text-sm leading-6 text-zinc-300">
+          <ul className="mb-3 list-disc space-y-1 pl-5 text-sm leading-6 text-foreground/85 marker:text-primary">
             {children}
           </ul>
         ),
         ol: ({ children }) => (
-          <ol className="mb-3 list-decimal space-y-1 pl-5 text-sm leading-6 text-zinc-300">
+          <ol className="mb-3 list-decimal space-y-1 pl-5 text-sm leading-6 text-foreground/85 marker:text-primary">
             {children}
           </ol>
         ),
         blockquote: ({ children }) => (
-          <blockquote className="mb-3 border-l-2 border-zinc-700 pl-3 text-sm leading-6 text-zinc-400">
+          <blockquote className="mb-3 border-l-2 border-primary pl-3 text-sm leading-6 text-muted-foreground">
             {children}
           </blockquote>
         ),
         hr: () => null,
         code: ({ children }) => (
-          <code className="rounded bg-zinc-800 px-1 py-0.5 font-mono text-sm text-zinc-100">
+          <code className="rounded bg-accent px-1 py-0.5 font-mono text-sm text-accent-foreground">
             {children}
           </code>
         ),
         pre: ({ children }) => (
-          <pre className="mb-3 overflow-x-auto rounded-lg bg-black p-3 text-sm leading-6 text-zinc-100">
+          <pre className="mb-3 overflow-x-auto rounded-xl bg-foreground p-3 text-sm leading-6 text-background">
             {children}
           </pre>
         ),
         table: ({ children }) => (
           <div className="mb-3 overflow-x-auto">
-            <table className="w-full border-collapse text-sm text-zinc-300">
+            <table className="w-full border-collapse text-sm text-foreground/85">
               {children}
             </table>
           </div>
         ),
         th: ({ children }) => (
-          <th className="border border-zinc-800 bg-zinc-900 px-2 py-1 text-left font-medium">
+          <th className="border border-border bg-muted px-2 py-1 text-left font-medium">
             {children}
           </th>
         ),
         td: ({ children }) => (
-          <td className="border border-zinc-800 px-2 py-1">{children}</td>
+          <td className="border border-border px-2 py-1">{children}</td>
         ),
       }}
     >
