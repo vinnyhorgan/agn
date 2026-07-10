@@ -92,10 +92,10 @@ export function SourceSearch({
                       {result.chunk.sourceLabel
                         ? `${result.chunk.sourceLabel} · `
                         : ""}
-                      {result.chunk.deckTitle}
+                      {result.chunk.sourceTitle}
                     </span>
                     <span className="line-clamp-1 text-sm font-medium text-foreground">
-                      Slide {result.chunk.slideNumber}
+                      Slide {result.chunk.sourceSlideNumber}
                       {result.chunk.slideTitle
                         ? ` · ${result.chunk.slideTitle}`
                         : ""}

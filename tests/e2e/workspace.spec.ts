@@ -136,6 +136,33 @@ test("shows a pending turn immediately and restores completed chat", async ({
   await expect(page.getByText("A streamed answer.")).toBeVisible();
 });
 
+test("imports a mixed SIR v2 corpus and preserves source-local slides", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-chromium");
+
+  const corpus = await createMixedSirArchive();
+  await page.goto("/");
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "database-corpus.sir",
+    mimeType: "application/zip",
+    buffer: corpus,
+  });
+
+  await expect(page.getByText("Sources 1–3", { exact: true })).toBeVisible();
+  await expect(page.getByText("3 sources", { exact: true })).toBeVisible();
+  await expect(page.getByText("Slide 1 / 2", { exact: true })).toBeVisible();
+
+  await page.getByPlaceholder("Search slides").fill("Domanda SQL");
+  await page.getByRole("button", { name: /exam[\s\S]*Slide 1/ }).click();
+  await expect(page.getByText("exam", { exact: true })).toBeVisible();
+  await expect(page.getByText("Slide 1 / 1", { exact: true })).toBeVisible();
+
+  await page.reload();
+  await expect(page.getByText("Sources 1–3", { exact: true })).toBeVisible();
+  await expect(page.getByText("Slide 1 / 1", { exact: true })).toBeVisible();
+});
+
 async function createSirArchive(
   title: string,
   slideCount: number,
@@ -165,5 +192,71 @@ async function createSirArchive(
     );
   }
 
+  return zip.generateAsync({ type: "nodebuffer" });
+}
+
+async function createMixedSirArchive(): Promise<Buffer> {
+  const zip = new JSZip();
+  zip.file(
+    "manifest.json",
+    JSON.stringify({
+      sir: 2,
+      title: "Database Corpus",
+      language: "it",
+      source_count: 3,
+      slide_count: 4,
+    }),
+  );
+  zip.file(
+    "sources.json",
+    JSON.stringify([
+      {
+        source: 1,
+        title: "slides",
+        path: "lectures/slides.pdf",
+        type: "pdf",
+        language: "it",
+        slide_start: 1,
+        slide_count: 2,
+      },
+      {
+        source: 2,
+        title: "exam",
+        path: "exams/exam.jpeg",
+        type: "image",
+        language: "it",
+        slide_start: 3,
+        slide_count: 1,
+      },
+      {
+        source: 3,
+        title: "outline",
+        path: "outline.md",
+        type: "markdown",
+        language: "it",
+        slide_start: 4,
+        slide_count: 1,
+      },
+    ]),
+  );
+  zip.file(
+    "sir.md",
+    [
+      "<!-- slide: 1 -->\n# Introduzione\nModello relazionale.",
+      "<!-- slide: 2 -->\n# Chiavi\nChiave candidata.",
+      "<!-- slide: 3 -->\n# Esame\nDomanda SQL fotografata.",
+      "<!-- slide: 4 -->\n# Programma\nOrganizzazione del corso.",
+    ].join("\n\n"),
+  );
+  zip.folder("slides");
+  for (let index = 1; index <= 4; index += 1) {
+    zip.file(
+      `slides/${String(index).padStart(4, "0")}.webp`,
+      new Uint8Array([
+        0x52, 0x49, 0x46, 0x46, 0x04, 0x00, 0x00, 0x00, 0x57, 0x45,
+        0x42, 0x50,
+      ]),
+    );
+  }
   return zip.generateAsync({ type: "nodebuffer" });
 }

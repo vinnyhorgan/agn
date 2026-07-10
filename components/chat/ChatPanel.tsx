@@ -342,7 +342,7 @@ function ChatTurnView({
     () =>
       new Set(
         turn.sources.map((source) =>
-          `${Number((source.sourceLabel ?? "Source 1").replace(/\D/g, "")) || 1}:${source.slideNumber}`,
+          `${Number((source.sourceLabel ?? "Source 1").replace(/\D/g, "")) || 1}:${source.sourceSlideNumber}`,
         ),
       ),
     [turn.sources],
@@ -351,7 +351,7 @@ function ChatTurnView({
   function selectCitation(sourceNumber: number, slideNumber: number) {
     const matchingSource = turn.sources.find(
       (source) =>
-        source.slideNumber === slideNumber &&
+        source.sourceSlideNumber === slideNumber &&
         (source.sourceLabel ?? "Source 1") === `Source ${sourceNumber}`,
     );
 
@@ -417,7 +417,7 @@ function RetrievedSources({
           )}
           onClick={() => onSelectSource(source)}
         >
-          {source.sourceLabel} · Slide {source.slideNumber}
+          {source.sourceLabel} · Slide {source.sourceSlideNumber}
         </button>
       ))}
       {remainingCount > 0 ? (

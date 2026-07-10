@@ -10,6 +10,7 @@ const searchIndexCache = new WeakMap<SourceChunk[], SearchIndex>();
 
 interface IndexedChunk {
   id: string;
+  sourceTitle: string;
   slideTitle: string;
   heading: string;
   text: string;
@@ -33,7 +34,7 @@ export function lexicalSearch(
 
   return engine
     .search(query, {
-      boost: { slideTitle: 4, heading: 2.5, text: 1 },
+      boost: { sourceTitle: 4, slideTitle: 4, heading: 2.5, text: 1 },
       combineWith: "OR",
       prefix: (term) => term.length >= 3,
       fuzzy: (term) => (term.length >= 6 ? 0.15 : false),
@@ -53,7 +54,7 @@ function getSearchIndex(chunks: SourceChunk[]): SearchIndex {
 
   const engine = new MiniSearch<IndexedChunk>({
     idField: "id",
-    fields: ["slideTitle", "heading", "text"],
+    fields: ["sourceTitle", "slideTitle", "heading", "text"],
     tokenize,
     processTerm: (term) => term.normalize("NFKC").toLocaleLowerCase(),
   });
@@ -62,6 +63,7 @@ function getSearchIndex(chunks: SourceChunk[]): SearchIndex {
   engine.addAll(
     chunks.map((chunk) => ({
       id: chunk.id,
+      sourceTitle: chunk.sourceTitle,
       slideTitle: chunk.slideTitle ?? "",
       heading: chunk.headingPath?.join(" ") ?? "",
       text: chunk.text,

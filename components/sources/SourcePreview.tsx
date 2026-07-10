@@ -21,6 +21,7 @@ interface SourcePreviewProps {
   decks: BrowserSirDeck[];
   sourceChunks: SourceChunk[];
   selectedSource?: SelectedSource;
+  onLoadSlideImage: (deckId: string, slideNumber: number) => Promise<void>;
   onSelectSource: (source: SelectedSource) => void;
 }
 
@@ -28,6 +29,7 @@ export function SourcePreview({
   decks,
   sourceChunks,
   selectedSource,
+  onLoadSlideImage,
   onSelectSource,
 }: SourcePreviewProps) {
   const [isImageOpen, setIsImageOpen] = useState(false);
@@ -42,18 +44,31 @@ export function SourcePreview({
     selectedSource?.chunkId !== undefined
       ? sourceChunks.find((chunk) => chunk.id === selectedSource.chunkId)
       : undefined;
+  const source = deck?.sources.find(
+    (candidate) => candidate.sourceNumber === slide?.sourceNumber,
+  );
+  const sourceLabel = source
+    ? getSourceLabel(deck?.sourceLabel, source.sourceNumber)
+    : deck?.sourceLabel;
   const slideIndex =
     deck && slide
       ? deck.slides.findIndex(
           (candidate) => candidate.slideNumber === slide.slideNumber,
         )
       : -1;
-  const isFirstSlide = slideIndex <= 0;
-  const isLastSlide = deck ? slideIndex >= deck.slides.length - 1 : true;
+  const isFirstSlide = !slide || slide.sourceSlideNumber <= 1;
+  const isLastSlide =
+    !slide || !source || slide.sourceSlideNumber >= source.slideCount;
   const chunk = selectedChunk;
   const imageUrl = slide
     ? deck?.imageUrlsBySlideNumber[slide.slideNumber]
     : undefined;
+
+  useEffect(() => {
+    if (deck && slide && !imageUrl) {
+      void onLoadSlideImage(deck.id, slide.slideNumber);
+    }
+  }, [deck, imageUrl, onLoadSlideImage, slide]);
 
   function selectSlideByOffset(offset: number) {
     if (!deck || slideIndex < 0) {
@@ -62,7 +77,7 @@ export function SourcePreview({
 
     const nextSlide = deck.slides[slideIndex + offset];
 
-    if (!nextSlide) {
+    if (!nextSlide || nextSlide.sourceNumber !== slide?.sourceNumber) {
       return;
     }
 
@@ -91,7 +106,7 @@ export function SourcePreview({
 
       const nextSlide = deck.slides[slideIndex + offset];
 
-      if (nextSlide) {
+      if (nextSlide && nextSlide.sourceNumber === slide?.sourceNumber) {
         event.preventDefault();
         onSelectSource({
           deckId: deck.id,
@@ -102,7 +117,7 @@ export function SourcePreview({
 
     document.addEventListener("keydown", handleFullscreenKeyDown);
     return () => document.removeEventListener("keydown", handleFullscreenKeyDown);
-  }, [deck, isImageOpen, onSelectSource, slideIndex]);
+  }, [deck, isImageOpen, onSelectSource, slide, slideIndex]);
 
   return (
     <aside className="flex h-full min-h-0 flex-col border-l border-border bg-sidebar text-sidebar-foreground">
@@ -138,14 +153,14 @@ export function SourcePreview({
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
           <div className="flex flex-wrap gap-2">
-            <Badge variant="secondary">{deck.sourceLabel}</Badge>
+            <Badge variant="secondary">{sourceLabel}</Badge>
             <Badge variant="outline" className="border-border text-muted-foreground">
-              Slide {slide.slideNumber}
+              Slide {slide.sourceSlideNumber}
             </Badge>
           </div>
 
           <h3 className="mt-3 text-base font-semibold leading-6 text-foreground">
-            {deck.manifest.title}
+            {source?.title ?? deck.manifest.title}
           </h3>
           <p className="mt-1 text-sm text-muted-foreground">
             {slide.title ?? "Untitled slide"}
@@ -163,7 +178,7 @@ export function SourcePreview({
               Previous
             </Button>
             <p className="shrink-0 text-xs font-medium text-muted-foreground">
-              Slide {slide.slideNumber} / {deck.manifest.slide_count}
+              Slide {slide.sourceSlideNumber} / {source?.slideCount ?? deck.manifest.slide_count}
             </p>
             <Button
               type="button"
@@ -245,7 +260,7 @@ export function SourcePreview({
             <div className="min-w-0">
               <p className="truncate">{deck.manifest.title}</p>
               <p className="text-xs text-white/50">
-                Slide {slide.slideNumber} of {deck.manifest.slide_count}
+                Slide {slide.sourceSlideNumber} of {source?.slideCount ?? deck.manifest.slide_count}
               </p>
             </div>
             <Button
@@ -292,6 +307,16 @@ export function SourcePreview({
       ) : null}
     </aside>
   );
+}
+
+function getSourceLabel(
+  firstSourceLabel: string | undefined,
+  sourceNumber: number,
+): string | undefined {
+  const firstSourceNumber = Number(firstSourceLabel?.match(/\d+/)?.[0]);
+  return Number.isInteger(firstSourceNumber)
+    ? `Source ${firstSourceNumber + sourceNumber - 1}`
+    : firstSourceLabel;
 }
 
 function MarkdownContent({ markdown }: { markdown: string }) {

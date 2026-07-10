@@ -1,7 +1,7 @@
 "use client";
 
 import { BookOpen, MessageSquareText, PanelLeft } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ChatPanel } from "@/components/chat/ChatPanel";
 import { SourcePreview } from "@/components/sources/SourcePreview";
@@ -12,7 +12,7 @@ import { chunkSlides } from "@/lib/search/chunkSlides";
 import { lexicalSearch } from "@/lib/search/lexicalSearch";
 import type { SearchResult } from "@/lib/search/types";
 import { parseSirFile } from "@/lib/sir/importSir";
-import { readSirImageObjectUrls } from "@/lib/sir/readSirImages";
+import { readSirImageObjectUrl } from "@/lib/sir/readSirImages";
 import type { SirValidationError } from "@/lib/sir/types";
 import { validateSirFile } from "@/lib/sir/validateSir";
 import {
@@ -29,6 +29,7 @@ const slidePositionStorageKey = "agn.library.slide-positions";
 
 export function AppShell() {
   const objectUrlsRef = useRef<string[]>([]);
+  const imageLoadPromisesRef = useRef(new Map<string, Promise<string>>());
   const [decks, setDecks] = useState<BrowserSirDeck[]>([]);
   const [selectedSource, setSelectedSource] = useState<SelectedSource>();
   const [lastViewedSlideByDeckId, setLastViewedSlideByDeckId] = useState<
@@ -63,7 +64,6 @@ export function AppShell() {
 
     async function restoreLibrary() {
       const restoredDecks: BrowserSirDeck[] = [];
-      const restoredUrls: string[] = [];
       const restoreErrors: SirValidationError[] = [];
 
       try {
@@ -73,7 +73,12 @@ export function AppShell() {
           try {
             const deck = await createBrowserDeck(storedDeck.data, storedDeck);
             restoredDecks.push(deck);
-            restoredUrls.push(...Object.values(deck.imageUrlsBySlideNumber));
+            if (!storedDeck.parsed) {
+              await storeSirDeck({
+                ...storedDeck,
+                parsed: toParsedSirFile(deck),
+              });
+            }
           } catch {
             restoreErrors.push({
               code: "stored_sir_read_failed",
@@ -84,11 +89,9 @@ export function AppShell() {
         }
 
         if (cancelled) {
-          revokeObjectUrls(restoredUrls);
           return;
         }
 
-        objectUrlsRef.current.push(...restoredUrls);
         setDecks(restoredDecks);
         setErrors(restoreErrors);
         const storedPositions = readSlidePositions();
@@ -140,9 +143,7 @@ export function AppShell() {
   }, []);
 
   useEffect(() => {
-    const objectUrls = objectUrlsRef.current;
-
-    return () => revokeObjectUrls(objectUrls);
+    return () => revokeObjectUrls(objectUrlsRef.current);
   }, []);
 
   async function handleUploadFiles(files: FileList | null) {
@@ -157,7 +158,6 @@ export function AppShell() {
 
     const nextDecks: BrowserSirDeck[] = [];
     const nextErrors: SirValidationError[] = [];
-    const nextObjectUrls: string[] = [];
     const knownHashes = new Set(decks.map((deck) => deck.contentHash));
     let nextSourceNumber = getNextSourceNumber(decks);
 
@@ -204,17 +204,15 @@ export function AppShell() {
           uploadedAt: Date.now() + nextDecks.length,
           data: input,
         };
-        const deck = await createBrowserDeck(input, storedDeck);
+        const deck = await createBrowserDeck(input, storedDeck, validation);
 
-        await storeSirDeck(storedDeck);
+        await storeSirDeck({ ...storedDeck, parsed: toParsedSirFile(deck) });
         nextDecks.push(deck);
-        nextObjectUrls.push(...Object.values(deck.imageUrlsBySlideNumber));
         knownHashes.add(contentHash);
-        nextSourceNumber += 1;
+        nextSourceNumber += deck.sources.length;
       }
 
       if (nextDecks.length > 0) {
-        objectUrlsRef.current.push(...nextObjectUrls);
         setDecks((currentDecks) => [...currentDecks, ...nextDecks]);
         const nextPositions = {
           ...lastViewedSlideByDeckId,
@@ -234,7 +232,6 @@ export function AppShell() {
 
       setErrors(nextErrors);
     } catch (error) {
-      revokeObjectUrls(nextObjectUrls);
       setErrors([
         {
           code: "sir_read_failed",
@@ -307,6 +304,57 @@ export function AppShell() {
     setMobilePane("preview");
   }
 
+  const loadSlideImage = useCallback(
+    async (deckId: string, slideNumber: number) => {
+      const deck = decks.find((candidate) => candidate.id === deckId);
+
+      if (!deck || deck.imageUrlsBySlideNumber[slideNumber]) {
+        return;
+      }
+
+      const cacheKey = `${deckId}:${slideNumber}`;
+      let pending = imageLoadPromisesRef.current.get(cacheKey);
+
+      if (!pending) {
+        const imagePath = deck.imagePaths[slideNumber - 1];
+        if (!imagePath) {
+          return;
+        }
+        pending = readSirImageObjectUrl(deck.archiveData, imagePath);
+        imageLoadPromisesRef.current.set(cacheKey, pending);
+      }
+
+      try {
+        const objectUrl = await pending;
+        objectUrlsRef.current.push(objectUrl);
+        setDecks((currentDecks) =>
+          currentDecks.map((candidate) =>
+            candidate.id === deckId
+              ? {
+                  ...candidate,
+                  imageUrlsBySlideNumber: {
+                    ...candidate.imageUrlsBySlideNumber,
+                    [slideNumber]: objectUrl,
+                  },
+                }
+              : candidate,
+          ),
+        );
+      } catch {
+        setErrors([
+          {
+            code: "slide_image_read_failed",
+            message: `Slide ${slideNumber} could not be loaded.`,
+            path: deck.fileName,
+          },
+        ]);
+      } finally {
+        imageLoadPromisesRef.current.delete(cacheKey);
+      }
+    },
+    [decks],
+  );
+
   return (
     <main className="relative grid h-dvh min-h-0 grid-cols-1 overflow-hidden bg-background pb-14 text-foreground lg:grid-cols-[minmax(260px,300px)_minmax(0,1fr)_minmax(300px,360px)] lg:pb-0 xl:grid-cols-[minmax(280px,320px)_minmax(0,1fr)_minmax(320px,380px)]">
       <div className={cn("min-h-0", mobilePane !== "sources" && "hidden", "lg:block")}>
@@ -328,7 +376,10 @@ export function AppShell() {
       <div className={cn("min-h-0", mobilePane !== "chat" && "hidden", "lg:block")}>
         <ChatPanel
           sourceChunks={sourceChunks}
-          sourceCount={decks.length}
+          sourceCount={decks.reduce(
+            (count, deck) => count + deck.sources.length,
+            0,
+          )}
           onSelectSource={selectSource}
         />
       </div>
@@ -337,6 +388,7 @@ export function AppShell() {
           decks={decks}
           sourceChunks={sourceChunks}
           selectedSource={selectedSource}
+          onLoadSlideImage={loadSlideImage}
           onSelectSource={selectSource}
         />
       </div>
@@ -349,22 +401,33 @@ async function createBrowserDeck(
   input: ArrayBuffer,
   storedDeck: Pick<
     StoredSirDeck,
-    "id" | "sourceLabel" | "fileName" | "contentHash"
+    "id" | "sourceLabel" | "fileName" | "contentHash" | "parsed"
+  >,
+  knownValidation?: Extract<
+    Awaited<ReturnType<typeof validateSirFile>>,
+    { valid: true }
   >,
 ): Promise<BrowserSirDeck> {
-  const parsed = await parseSirFile(input);
-  const imageUrlsBySlideNumber = await readSirImageObjectUrls(
-    input,
-    parsed.imagePaths,
-  );
-
+  const parsed = storedDeck.parsed
+    ? storedDeck.parsed
+    : await parseSirFile(input, knownValidation);
   return {
     ...parsed,
     id: storedDeck.id,
     sourceLabel: storedDeck.sourceLabel,
     fileName: storedDeck.fileName,
     contentHash: storedDeck.contentHash,
-    imageUrlsBySlideNumber,
+    archiveData: input,
+    imageUrlsBySlideNumber: {},
+  };
+}
+
+function toParsedSirFile(deck: BrowserSirDeck) {
+  return {
+    manifest: deck.manifest,
+    sources: deck.sources,
+    slides: deck.slides,
+    imagePaths: deck.imagePaths,
   };
 }
 
@@ -388,7 +451,10 @@ function getNextSourceNumber(decks: BrowserSirDeck[]): number {
     Math.max(
       0,
       ...decks.map(
-        (deck) => Number(deck.sourceLabel.match(/\d+/)?.[0] ?? 0),
+        (deck) =>
+          Number(deck.sourceLabel.match(/\d+/)?.[0] ?? 0) +
+          deck.sources.length -
+          1,
       ),
     ) + 1
   );

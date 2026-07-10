@@ -10,7 +10,7 @@ export function repairModelCitations(
   const validQualified = new Set(
     sources.map(
       (source) =>
-        `${normalizeSourceLabel(source.sourceLabel)},${source.slideNumber}`,
+        `${normalizeSourceLabel(source.sourceLabel)},${source.sourceSlideNumber}`,
     ),
   );
 
@@ -25,7 +25,9 @@ export function repairModelCitations(
   return repairedQualified
     .replace(legacyCitationPattern, (citation, slideNumber: string) => {
       const matchingSources = uniqueSourceLabels(
-        sources.filter((source) => source.slideNumber === Number(slideNumber)),
+        sources.filter(
+          (source) => source.sourceSlideNumber === Number(slideNumber),
+        ),
       );
 
       if (matchingSources.length !== 1) {

@@ -27,6 +27,20 @@ describe("citation repair", () => {
       ]),
     ).toBe("Claim.");
   });
+
+  it("validates citations against source-local rather than global slides", () => {
+    const source = {
+      ...createChunk("Source 7", 103),
+      sourceSlideNumber: 3,
+    };
+
+    expect(
+      repairModelCitations(
+        "Local [Source 7, Slide 3]. Global [Source 7, Slide 103].",
+        [source],
+      ),
+    ).toBe("Local [Source 7, Slide 3]. Global.");
+  });
 });
 
 function createChunk(sourceLabel: string, slideNumber: number): SourceChunk {
@@ -35,7 +49,11 @@ function createChunk(sourceLabel: string, slideNumber: number): SourceChunk {
     deckId: sourceLabel,
     deckTitle: sourceLabel,
     sourceLabel,
+    sourceTitle: sourceLabel,
+    sourcePath: `${sourceLabel}.pdf`,
+    sourceMediaType: "pdf",
     slideNumber,
+    sourceSlideNumber: slideNumber,
     text: "Evidence",
     slideImagePath: `slides/${String(slideNumber).padStart(4, "0")}.webp`,
   };

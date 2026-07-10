@@ -55,8 +55,10 @@ function formatSourceChunk(chunk: SourceChunk, index: number): string {
   const lines = [
     `<source index="${index + 1}">`,
     `Source label: ${chunk.sourceLabel ?? "Source 1"}`,
-    `Deck: ${chunk.deckTitle}`,
-    `Slide: ${chunk.slideNumber}`,
+    `Source title: ${chunk.sourceTitle}`,
+    ...(chunk.sourcePath ? [`Original path: ${chunk.sourcePath}`] : []),
+    `Source type: ${chunk.sourceMediaType}`,
+    `Slide: ${chunk.sourceSlideNumber}`,
     `Slide title: ${chunk.slideTitle ?? "Untitled slide"}`,
   ];
 

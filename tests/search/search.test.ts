@@ -31,10 +31,13 @@ describe("source chunking", () => {
         language: "en",
         slide_count: 1,
       },
+      sources: [createV1Source("Single Chunk Deck", "en", 1)],
       imagePaths: ["slides/0001.webp"],
       slides: [
         {
           slideNumber: 1,
+          sourceNumber: 1,
+          sourceSlideNumber: 1,
           title: "Plain Slide",
           markdown: "# Plain Slide\n\nA short slide without subheadings.",
         },
@@ -74,10 +77,13 @@ describe("lexical search", () => {
   it("searches non-Latin source text", () => {
     const chunks = chunkSlides({
       manifest: { sir: 1, title: "日本語", language: "ja", slide_count: 1 },
+      sources: [createV1Source("日本語", "ja", 1)],
       imagePaths: ["slides/0001.webp"],
       slides: [
         {
           slideNumber: 1,
+          sourceNumber: 1,
+          sourceSlideNumber: 1,
           title: "光合成",
           markdown: "# 光合成\n\n植物は光エネルギーを使います。",
         },
@@ -103,10 +109,13 @@ function createParsedDeck(): ParsedSirFile {
       language: "en",
       slide_count: 2,
     },
+    sources: [createV1Source("Local Search Deck", "en", 2)],
     imagePaths: ["slides/0001.webp", "slides/0002.webp"],
     slides: [
       {
         slideNumber: 1,
+        sourceNumber: 1,
+        sourceSlideNumber: 1,
         title: "Photosynthesis",
         markdown: `
 # Photosynthesis
@@ -120,6 +129,8 @@ Chlorophyll captures light in leaves.
       },
       {
         slideNumber: 2,
+        sourceNumber: 1,
+        sourceSlideNumber: 2,
         title: "Cellular Respiration",
         markdown: `
 # Cellular Respiration
@@ -128,5 +139,17 @@ Mitochondria release stored energy from glucose. Chlorophyll appears here only a
 `,
       },
     ],
+  };
+}
+
+function createV1Source(title: string, language: string, slideCount: number) {
+  return {
+    sourceNumber: 1,
+    title,
+    originalPath: "",
+    mediaType: "sir-v1" as const,
+    language,
+    slideStart: 1,
+    slideCount,
   };
 }

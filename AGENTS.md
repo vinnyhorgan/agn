@@ -11,8 +11,8 @@ Build step by step. Do not add advanced features early.
 Current milestones:
 
 1. Clean project foundation.
-2. SIR v1 validation.
-3. SIR v1 import and parsing.
+2. SIR v1/v2 validation.
+3. SIR v1/v2 import and parsing.
 4. Slide viewer.
 5. Source-grounded retrieval.
 6. BYOK text-model chat.
@@ -34,7 +34,9 @@ Use:
 
 This repo currently uses the top-level app directory, not src/app. Follow the existing structure unless explicitly asked to migrate.
 
-## SIR v1 standard
+## SIR standards
+
+SIR v1 remains supported for a single legacy slide deck.
 
 A .sir file is a ZIP archive with this exact internal structure:
 
@@ -55,6 +57,40 @@ manifest.json must contain exactly four fields:
 - slide_count: positive integer
 
 No extra manifest fields are allowed.
+
+SIR v2 represents a mixed corpus while retaining the same global slide
+foundation. Its exact root structure is:
+
+- manifest.json
+- sources.json
+- sir.md
+- slides/
+  - 0001.webp
+  - 0002.webp
+  - etc.
+
+The v2 manifest contains exactly five fields:
+
+- sir: integer 2
+- title: string
+- language: string
+- source_count: positive integer
+- slide_count: positive integer
+
+sources.json is an array of exactly source_count records. Each record contains
+exactly:
+
+- source: consecutive integer starting at 1
+- title: non-empty string
+- path: unique original relative path
+- type: pdf, image, or markdown
+- language: non-empty string
+- slide_start: positive integer
+- slide_count: positive integer
+
+Source slide ranges must be ordered, consecutive, non-overlapping, start at
+global slide 1, and cover all global slides. A cited source-local slide number
+is `global slide - slide_start + 1`.
 
 sir.md contains slide sections marked by HTML comments:
 
@@ -82,22 +118,28 @@ When uploaded sources support an answer, use and cite them. When the sources are
 
 Reject malformed SIR files with clear validation errors.
 
-Validate:
+Validate both versions strictly:
 
 - the file is a ZIP archive
 - manifest.json exists at the root
 - sir.md exists at the root
 - slides/ exists
-- manifest.json has exactly the four required fields
-- manifest.sir equals 1
+- manifest.json has exactly the fields required by its version
+- manifest.sir equals 1 or 2
 - manifest.slide_count is a positive integer
+- v2 sources.json exists at the root
+- v2 source_count matches the number of source records
+- v2 source records have exactly the required fields
+- v2 source paths are unique
+- v2 source numbers and slide ranges are consecutive
 - sir.md contains exactly slide_count slide markers
 - slide markers are consecutive from 1 to slide_count
 - slides/ contains exactly slide_count WebP files
 - slide image names are zero-padded and consecutive
 - slide N maps to slides/NNNN.webp
 
-Do not require the original PDF. AGN consumes only .sir files.
+Do not require original source files. AGN consumes only .sir files. PDF,
+image, and Markdown corpora are normalized into SIR v2 before import.
 
 ## Indexing rules
 
@@ -105,7 +147,10 @@ Every indexed source chunk must retain enough metadata to map back to:
 
 - deck id
 - deck title
+- source title and original path
+- source media type
 - slide number
+- source-local slide number
 - slide title if available
 - slide image path
 - chunk text

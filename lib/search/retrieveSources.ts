@@ -66,7 +66,10 @@ function selectOverviewChunks(chunks: SourceChunk[]): SourceChunk[] {
       { numeric: true },
     );
 
-    return sourceComparison || leftChunk.slideNumber - rightChunk.slideNumber;
+    return (
+      sourceComparison ||
+      leftChunk.sourceSlideNumber - rightChunk.sourceSlideNumber
+    );
   });
   const firstPass = orderedSlides.map((slideChunks) => slideChunks[0]!);
   const remainingPasses = orderedSlides.flatMap((slideChunks) => slideChunks.slice(1));

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import JSZip from "jszip";
 
+import { chunkSlides } from "../../lib/search/chunkSlides";
 import { parseSirFile } from "../../lib/sir/importSir";
 import { parseSirMarkdown } from "../../lib/sir/parseSirMarkdown";
 import { validateSirFile } from "../../lib/sir/validateSir";
@@ -157,11 +158,15 @@ Plain body.
     expect(slides).toEqual([
       {
         slideNumber: 1,
+        sourceNumber: 1,
+        sourceSlideNumber: 1,
         title: "Slide 1 - Intro",
         markdown: "\n# Slide 1 - Intro\n\nBody one.\n\n",
       },
       {
         slideNumber: 2,
+        sourceNumber: 1,
+        sourceSlideNumber: 2,
         title: "Slide 2 - Details",
         markdown: "\nPlain body.\n\n# Slide 2 - Details\n",
       },
@@ -194,6 +199,88 @@ Body.
     expect(parsed.manifest.title).toBe("Example Deck");
     expect(parsed.slides).toHaveLength(2);
     expect(parsed.imagePaths).toEqual(["slides/0001.webp", "slides/0002.webp"]);
+  });
+});
+
+describe("SIR v2 mixed-corpus validation and parsing", () => {
+  it("accepts PDF, image, and Markdown sources with consecutive ranges", async () => {
+    const input = await createMixedCorpusArchive();
+    const validation = await validateSirFile(input);
+
+    expect(validation.valid).toBe(true);
+    if (!validation.valid) {
+      throw new Error("Expected valid result");
+    }
+
+    expect(validation.manifest).toEqual({
+      sir: 2,
+      title: "Database Exam Corpus",
+      language: "it",
+      source_count: 3,
+      slide_count: 4,
+    });
+    expect(validation.sources.map((source) => source.mediaType)).toEqual([
+      "pdf",
+      "image",
+      "markdown",
+    ]);
+
+    const parsed = await parseSirFile(input);
+    expect(parsed.slides.map((slide) => [
+      slide.slideNumber,
+      slide.sourceNumber,
+      slide.sourceSlideNumber,
+    ])).toEqual([
+      [1, 1, 1],
+      [2, 1, 2],
+      [3, 2, 1],
+      [4, 3, 1],
+    ]);
+
+    const chunks = chunkSlides(parsed, {
+      deckId: "database-corpus",
+      sourceLabel: "Source 4",
+    });
+    expect(
+      chunks.map((chunk) => [
+        chunk.sourceLabel,
+        chunk.sourceTitle,
+        chunk.slideNumber,
+        chunk.sourceSlideNumber,
+      ]),
+    ).toEqual([
+      ["Source 4", "slides", 1, 1],
+      ["Source 4", "slides", 2, 2],
+      ["Source 5", "exam", 3, 1],
+      ["Source 6", "organizzazione", 4, 1],
+    ]);
+  });
+
+  it("requires sources.json for SIR v2", async () => {
+    const input = await createMixedCorpusArchive({ includeSources: false });
+    expectErrorCode(await validateSirFile(input), "missing_sources");
+  });
+
+  it("rejects source ranges that overlap or leave gaps", async () => {
+    const input = await createMixedCorpusArchive({
+      sources: [
+        createSource(1, "slides.pdf", "pdf", 1, 2),
+        createSource(2, "exam.jpeg", "image", 2, 1),
+        createSource(3, "outline.md", "markdown", 4, 1),
+      ],
+    });
+    expectErrorCode(
+      await validateSirFile(input),
+      "non_consecutive_source_ranges",
+    );
+  });
+
+  it("rejects extra source metadata fields", async () => {
+    const sources = defaultMixedSources();
+    const input = await createMixedCorpusArchive({
+      sources: [{ ...sources[0], checksum: "nope" }, ...sources.slice(1)],
+    });
+    expectErrorCode(await validateSirFile(input), "unexpected_source_field");
   });
 });
 
@@ -255,6 +342,79 @@ async function createSirArchive({
   }
 
   return zip.generateAsync({ type: "uint8array" });
+}
+
+async function createMixedCorpusArchive({
+  includeSources = true,
+  sources = defaultMixedSources(),
+}: {
+  includeSources?: boolean;
+  sources?: Record<string, unknown>[];
+} = {}): Promise<Uint8Array> {
+  const zip = new JSZip();
+  zip.file(
+    "manifest.json",
+    JSON.stringify({
+      sir: 2,
+      title: "Database Exam Corpus",
+      language: "it",
+      source_count: 3,
+      slide_count: 4,
+    }),
+  );
+  if (includeSources) {
+    zip.file("sources.json", JSON.stringify(sources));
+  }
+  zip.file(
+    "sir.md",
+    [
+      "<!-- slide: 1 -->\n# Introduzione\nTesto.",
+      "<!-- slide: 2 -->\n# Diagramma ER\nEntità Studente.",
+      "<!-- slide: 3 -->\n# Foto esame\nDomanda SQL.",
+      "<!-- slide: 4 -->\n# Organizzazione\nProgramma del corso.",
+    ].join("\n\n"),
+  );
+  zip.folder("slides");
+  for (let slideNumber = 1; slideNumber <= 4; slideNumber += 1) {
+    zip.file(
+      `slides/${String(slideNumber).padStart(4, "0")}.webp`,
+      validWebPBytes(),
+    );
+  }
+  return zip.generateAsync({ type: "uint8array" });
+}
+
+function defaultMixedSources(): Record<string, unknown>[] {
+  return [
+    createSource(1, "lectures/slides.pdf", "pdf", 1, 2),
+    createSource(2, "exams/exam.jpeg", "image", 3, 1),
+    createSource(3, "organizzazione.md", "markdown", 4, 1),
+  ];
+}
+
+function createSource(
+  source: number,
+  path: string,
+  type: "pdf" | "image" | "markdown",
+  slideStart: number,
+  slideCount: number,
+): Record<string, unknown> {
+  return {
+    source,
+    title: path.split("/").at(-1)?.replace(/\.[^.]+$/, "") ?? path,
+    path,
+    type,
+    language: "it",
+    slide_start: slideStart,
+    slide_count: slideCount,
+  };
+}
+
+function validWebPBytes(): Uint8Array {
+  return new Uint8Array([
+    0x52, 0x49, 0x46, 0x46, 0x04, 0x00, 0x00, 0x00, 0x57, 0x45,
+    0x42, 0x50,
+  ]);
 }
 
 function expectErrorCode(

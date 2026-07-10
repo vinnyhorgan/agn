@@ -9,6 +9,7 @@ export interface StoredSirDeck {
   contentHash: string;
   uploadedAt: number;
   data: ArrayBuffer;
+  parsed?: ParsedSirFile;
 }
 
 export async function listStoredSirDecks(): Promise<StoredSirDeck[]> {
@@ -90,3 +91,4 @@ function transactionToPromise(transaction: IDBTransaction): Promise<void> {
     transaction.onerror = () => reject(transaction.error ?? new Error("Local storage transaction failed."));
   });
 }
+import type { ParsedSirFile } from "@/lib/sir/types";

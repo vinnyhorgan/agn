@@ -3,7 +3,11 @@ export interface SourceChunk {
   deckId: string;
   deckTitle: string;
   sourceLabel?: string;
+  sourceTitle: string;
+  sourcePath: string;
+  sourceMediaType: "pdf" | "image" | "markdown" | "sir-v1";
   slideNumber: number;
+  sourceSlideNumber: number;
   slideTitle?: string;
   headingPath?: string[];
   text: string;

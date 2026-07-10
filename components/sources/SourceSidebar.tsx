@@ -125,7 +125,7 @@ export function SourceSidebar({
             Sources
           </h2>
           <Badge variant="outline" className="border-border text-muted-foreground">
-            {decks.length}
+            {decks.reduce((count, deck) => count + deck.sources.length, 0)}
           </Badge>
         </div>
         {decks.length > 0 ? (
@@ -166,13 +166,13 @@ export function SourceSidebar({
                     />
                     <span className="min-w-0">
                       <span className="block text-xs font-medium text-primary">
-                        {deck.sourceLabel}
+                        {formatSourceRange(deck)}
                       </span>
                       <span className="line-clamp-2 text-sm font-medium leading-5 text-foreground">
                         {deck.manifest.title}
                       </span>
                       <span className="mt-1 block text-xs text-muted-foreground">
-                        {deck.manifest.language} · {deck.manifest.slide_count}{" "}
+                        {deck.manifest.language} · {deck.sources.length} source{deck.sources.length === 1 ? "" : "s"} · {deck.manifest.slide_count}{" "}
                         slide{deck.manifest.slide_count === 1 ? "" : "s"}
                       </span>
                     </span>
@@ -222,6 +222,17 @@ export function SourceSidebar({
   );
 }
 
+function formatSourceRange(deck: BrowserSirDeck): string {
+  if (deck.sources.length <= 1) {
+    return deck.sourceLabel;
+  }
+
+  const first = Number(deck.sourceLabel.match(/\d+/)?.[0]);
+  return Number.isInteger(first)
+    ? `Sources ${first}–${first + deck.sources.length - 1}`
+    : deck.sourceLabel;
+}
+
 function GenerateSirDialog({ onClose }: { onClose: () => void }) {
   const [didCopy, setDidCopy] = useState(false);
 
@@ -255,8 +266,8 @@ function GenerateSirDialog({ onClose }: { onClose: () => void }) {
               Generate SIR
             </h2>
             <p className="mt-1 text-sm leading-6 text-muted-foreground">
-              Use ChatGPT to compile PDF slide decks into AGN-compatible SIR
-              files.
+              Use ChatGPT to compile a mixed PDF, image, and Markdown corpus
+              into one AGN-compatible SIR archive.
             </p>
           </div>
           <Button
@@ -298,7 +309,7 @@ function GenerateSirDialog({ onClose }: { onClose: () => void }) {
 
         <footer className="flex items-center justify-between gap-3 border-t border-border px-4 py-3">
           <p className="text-xs text-muted-foreground">
-            The prompt enforces the current SIR v1 structure.
+            The prompt enforces the current mixed-corpus SIR v2 structure.
           </p>
           <Button type="button" variant="secondary" onClick={copyPrompt}>
             {didCopy ? (
@@ -325,7 +336,7 @@ function ValidationIssues({ errors }: { errors: SirValidationError[] }) {
         <div>
           <h3 className="text-sm font-semibold">Couldn&apos;t import this source</h3>
           <p className="text-xs text-destructive/75">
-            The archive doesn&apos;t match the SIR v1 format.
+            The archive doesn&apos;t match a supported SIR format.
           </p>
         </div>
       </div>

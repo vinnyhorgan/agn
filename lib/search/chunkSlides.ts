@@ -27,11 +27,22 @@ export function chunkSlides(
   const deckId = options.deckId ?? createDefaultDeckId(deck.manifest.title);
 
   for (const slide of deck.slides) {
+    const source = deck.sources.find(
+      (candidate) => candidate.sourceNumber === slide.sourceNumber,
+    );
+
+    if (!source) {
+      throw new Error(`Slide ${slide.slideNumber} has no matching source.`);
+    }
+
     const slideImagePath = getSlideImagePath(deck, slide.slideNumber);
     const slideChunks = chunkSlide({
       deckId,
       deckTitle: deck.manifest.title,
-      sourceLabel: options.sourceLabel,
+      sourceLabel: createSourceLabel(options.sourceLabel, source.sourceNumber),
+      sourceTitle: source.title,
+      sourcePath: source.originalPath,
+      sourceMediaType: source.mediaType,
       slide,
       slideImagePath,
     });
@@ -45,12 +56,18 @@ function chunkSlide({
   deckId,
   deckTitle,
   sourceLabel,
+  sourceTitle,
+  sourcePath,
+  sourceMediaType,
   slide,
   slideImagePath,
 }: {
   deckId: string;
   deckTitle: string;
   sourceLabel?: string;
+  sourceTitle: string;
+  sourcePath: string;
+  sourceMediaType: SourceChunk["sourceMediaType"];
   slide: ParsedSirSlide;
   slideImagePath: string;
 }): SourceChunk[] {
@@ -78,13 +95,31 @@ function chunkSlide({
       deckId,
       deckTitle,
       sourceLabel,
+      sourceTitle,
+      sourcePath,
+      sourceMediaType,
       slideNumber: slide.slideNumber,
+      sourceSlideNumber: slide.sourceSlideNumber,
       slideTitle: slide.title,
       headingPath: sourceText.headingPath,
       text: sourceText.text,
       slideImagePath,
     }))
     .filter((chunk) => chunk.text.length > 0);
+}
+
+function createSourceLabel(
+  firstSourceLabel: string | undefined,
+  sourceNumber: number,
+): string | undefined {
+  if (!firstSourceLabel) {
+    return undefined;
+  }
+
+  const firstSourceNumber = Number(firstSourceLabel.match(/\d+/)?.[0]);
+  return Number.isInteger(firstSourceNumber)
+    ? `Source ${firstSourceNumber + sourceNumber - 1}`
+    : firstSourceLabel;
 }
 
 function splitSlideIntoSections(slide: ParsedSirSlide): SlideSection[] {

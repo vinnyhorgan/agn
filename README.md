@@ -4,7 +4,7 @@ Actually-Good-Notebook is a local-first learning workspace for SIR slide decks. 
 
 ## Current capabilities
 
-- Strict SIR v1 archive validation and parsing
+- Strict SIR v1 deck and SIR v2 mixed-corpus validation and parsing
 - Multi-deck slide viewing with local WebP previews
 - Persistent browser-local deck library and reading position
 - Unicode-aware BM25 search with slide-level metadata
@@ -33,17 +33,22 @@ pnpm test:e2e
 pnpm build
 ```
 
-## SIR v1
+## SIR
 
-A `.sir` file is a ZIP archive with this root structure:
+A SIR v2 `.sir` file normalizes PDFs, images, and Markdown into one
+source-aware corpus while retaining a global slide sequence:
 
 ```text
 manifest.json
+sources.json
 sir.md
 slides/
   0001.webp
   0002.webp
 ```
+
+Legacy single-deck SIR v1 archives remain supported. Use the in-app Generate
+SIR prompt to compile a mixed corpus ZIP with ChatGPT.
 
 See [AGENTS.md](./AGENTS.md) for the complete format and engineering rules.
 
