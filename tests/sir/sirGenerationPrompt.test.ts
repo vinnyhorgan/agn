@@ -24,5 +24,10 @@ describe("SIR generation prompt", () => {
     expect(sirGenerationPrompt).toContain("ER diagrams");
     expect(sirGenerationPrompt).toContain("Markdown files");
     expect(sirGenerationPrompt).toContain("Never silently omit a supported source");
+    expect(sirGenerationPrompt).toContain("Struttura visiva rilevata");
+    expect(sirGenerationPrompt).toContain("CREATE VIEW OLANDA");
+    expect(sirGenerationPrompt).toContain("Panchina");
+    expect(sirGenerationPrompt).toContain("internal ledger");
+    expect(sirGenerationPrompt).toContain("actually inspect every rendered page visually");
   });
 });

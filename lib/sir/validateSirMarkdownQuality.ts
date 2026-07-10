@@ -1,0 +1,87 @@
+import type { SirValidationError } from "@/lib/sir/types";
+
+const slideSectionPattern = /<!--\s*slide:\s*(\d+)\s*-->([\s\S]*?)(?=<!--\s*slide:|$)/g;
+const forbiddenPlaceholderPatterns = [
+  /struttura visiva rilevata/iu,
+  /disposizione completa (?:è|e') conservata nell['’]immagine/iu,
+  /(?:diagram|image|figura) (?:shown|mostrat[ao]|preservat[ao])(?:\s|$)/iu,
+  /(?:see|vedi|consultare) (?:the |la |l['’])?(?:slide )?image/iu,
+];
+const explicitBlankPattern =
+  /(?:pagina|slide) (?:intenzionalmente |veramente )?(?:vuota|bianca)|(?:intentionally |truly )?blank (?:page|slide)/iu;
+const minimumMeaningfulCharacters = 24;
+
+export function validateSirMarkdownQuality(
+  markdown: string,
+): SirValidationError[] {
+  const sections = Array.from(markdown.matchAll(slideSectionPattern));
+  const placeholderSlides: number[] = [];
+  const missingHeadingSlides: number[] = [];
+  const sparseSlides: number[] = [];
+
+  for (const match of sections) {
+    const slideNumber = Number(match[1]);
+    const content = match[2] ?? "";
+
+    if (forbiddenPlaceholderPatterns.some((pattern) => pattern.test(content))) {
+      placeholderSlides.push(slideNumber);
+    }
+
+    if (!/^#\s+\S.+$/mu.test(content)) {
+      missingHeadingSlides.push(slideNumber);
+    }
+
+    const meaningfulText = content
+      .replace(/^#{1,6}\s+.*$/gmu, " ")
+      .replace(/```/gu, " ")
+      .replace(/[_*`>|#\-]/gu, " ")
+      .replace(/\s+/gu, " ")
+      .trim();
+
+    if (
+      meaningfulText.length < minimumMeaningfulCharacters &&
+      !explicitBlankPattern.test(content)
+    ) {
+      sparseSlides.push(slideNumber);
+    }
+  }
+
+  return [
+    createAggregateError(
+      placeholderSlides,
+      "generic_visual_placeholder",
+      "SIR v2 Markdown must transcribe visible content instead of using generic visual placeholders",
+    ),
+    createAggregateError(
+      missingHeadingSlides,
+      "missing_slide_heading",
+      "Every SIR v2 slide must begin with a useful Markdown H1",
+    ),
+    createAggregateError(
+      sparseSlides,
+      "insufficient_slide_transcription",
+      `Every non-blank SIR v2 slide needs at least ${minimumMeaningfulCharacters} characters of substantive content beyond its heading`,
+    ),
+  ].filter((error): error is SirValidationError => error !== undefined);
+}
+
+function createAggregateError(
+  slideNumbers: number[],
+  code: string,
+  requirement: string,
+): SirValidationError | undefined {
+  if (slideNumbers.length === 0) {
+    return undefined;
+  }
+
+  const sample = slideNumbers.slice(0, 12).join(", ");
+  const remainder = slideNumbers.length > 12
+    ? `, and ${slideNumbers.length - 12} more`
+    : "";
+
+  return {
+    code,
+    message: `${requirement}. Affected slides: ${sample}${remainder}.`,
+    path: "sir.md",
+  };
+}

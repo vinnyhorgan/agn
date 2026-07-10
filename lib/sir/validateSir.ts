@@ -1,6 +1,7 @@
 import JSZip from "jszip";
 
 import { extractSlideMarkers } from "./parseSirMarkdown";
+import { validateSirMarkdownQuality } from "./validateSirMarkdownQuality";
 import type {
   ParsedSirSource,
   SirManifest,
@@ -153,6 +154,9 @@ export async function validateSirFile(
 
   if (manifest) {
     validateSlideMarkers(slideMarkers, manifest.slide_count, errors);
+    if (manifest.sir === 2 && markdown) {
+      errors.push(...validateSirMarkdownQuality(markdown));
+    }
     await validateSlideImages(entries, manifest.slide_count, errors);
   }
 

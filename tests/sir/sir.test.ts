@@ -282,6 +282,19 @@ describe("SIR v2 mixed-corpus validation and parsing", () => {
     });
     expectErrorCode(await validateSirFile(input), "unexpected_source_field");
   });
+
+  it("rejects generic visual placeholders instead of semantic transcription", async () => {
+    const input = await createMixedCorpusArchive({
+      markdown: [
+        "<!-- slide: 1 -->\n# Introduzione\nContenuto didattico completo della prima pagina.",
+        "<!-- slide: 2 -->\n# Diagramma ER\n_Struttura visiva rilevata: 12 gruppi di elementi vettoriali; la disposizione completa è conservata nell’immagine della slide._",
+        "<!-- slide: 3 -->\n# Foto esame\nTrascrizione completa della domanda SQL fotografata.",
+        "<!-- slide: 4 -->\n# Organizzazione\nProgramma completo e bibliografia consigliata del corso.",
+      ].join("\n\n"),
+    });
+
+    expectErrorCode(await validateSirFile(input), "generic_visual_placeholder");
+  });
 });
 
 interface CreateSirArchiveOptions {
@@ -347,9 +360,16 @@ async function createSirArchive({
 async function createMixedCorpusArchive({
   includeSources = true,
   sources = defaultMixedSources(),
+  markdown = [
+    "<!-- slide: 1 -->\n# Introduzione\nContenuto didattico completo della prima pagina.",
+    "<!-- slide: 2 -->\n# Diagramma ER\nDescrizione completa di entità, relazioni e cardinalità.",
+    "<!-- slide: 3 -->\n# Foto esame\nTrascrizione completa della domanda SQL fotografata.",
+    "<!-- slide: 4 -->\n# Organizzazione\nProgramma completo e bibliografia consigliata del corso.",
+  ].join("\n\n"),
 }: {
   includeSources?: boolean;
   sources?: Record<string, unknown>[];
+  markdown?: string;
 } = {}): Promise<Uint8Array> {
   const zip = new JSZip();
   zip.file(
@@ -365,15 +385,7 @@ async function createMixedCorpusArchive({
   if (includeSources) {
     zip.file("sources.json", JSON.stringify(sources));
   }
-  zip.file(
-    "sir.md",
-    [
-      "<!-- slide: 1 -->\n# Introduzione\nTesto.",
-      "<!-- slide: 2 -->\n# Diagramma ER\nEntità Studente.",
-      "<!-- slide: 3 -->\n# Foto esame\nDomanda SQL.",
-      "<!-- slide: 4 -->\n# Organizzazione\nProgramma del corso.",
-    ].join("\n\n"),
-  );
+  zip.file("sir.md", markdown);
   zip.folder("slides");
   for (let slideNumber = 1; slideNumber <= 4; slideNumber += 1) {
     zip.file(

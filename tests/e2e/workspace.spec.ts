@@ -242,10 +242,10 @@ async function createMixedSirArchive(): Promise<Buffer> {
   zip.file(
     "sir.md",
     [
-      "<!-- slide: 1 -->\n# Introduzione\nModello relazionale.",
-      "<!-- slide: 2 -->\n# Chiavi\nChiave candidata.",
-      "<!-- slide: 3 -->\n# Esame\nDomanda SQL fotografata.",
-      "<!-- slide: 4 -->\n# Programma\nOrganizzazione del corso.",
+      "<!-- slide: 1 -->\n# Introduzione\nIntroduzione completa al modello relazionale.",
+      "<!-- slide: 2 -->\n# Chiavi\nDefinizione ed esempio completo di chiave candidata.",
+      "<!-- slide: 3 -->\n# Esame\nTrascrizione completa della domanda SQL fotografata.",
+      "<!-- slide: 4 -->\n# Programma\nOrganizzazione dettagliata degli argomenti del corso.",
     ].join("\n\n"),
   );
   zip.folder("slides");
