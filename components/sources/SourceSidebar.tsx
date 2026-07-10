@@ -1,6 +1,15 @@
 "use client";
 
-import { Check, Copy, FileText, Loader2, Sparkles, Upload, X } from "lucide-react";
+import {
+  Check,
+  Copy,
+  FileText,
+  Loader2,
+  Sparkles,
+  Trash2,
+  Upload,
+  X,
+} from "lucide-react";
 import { useRef, useState } from "react";
 
 import { SourceSearch } from "@/components/sources/SourceSearch";
@@ -23,7 +32,9 @@ interface SourceSidebarProps {
   searchResultCount: number;
   searchResults: SearchResult[];
   selectedSource?: SelectedSource;
+  lastViewedSlideByDeckId: Record<string, number>;
   onUploadFiles: (files: FileList | null) => void;
+  onRemoveDeck: (deckId: string) => Promise<void>;
   onSearchQueryChange: (query: string) => void;
   onSelectSource: (source: SelectedSource) => void;
 }
@@ -36,7 +47,9 @@ export function SourceSidebar({
   searchResultCount,
   searchResults,
   selectedSource,
+  lastViewedSlideByDeckId,
   onUploadFiles,
+  onRemoveDeck,
   onSearchQueryChange,
   onSelectSource,
 }: SourceSidebarProps) {
@@ -52,16 +65,13 @@ export function SourceSidebar({
     <aside className="flex h-full min-h-0 flex-col border-r border-zinc-800 bg-zinc-950">
       <div className="border-b border-zinc-800 px-4 py-4">
         <div className="flex items-center justify-between gap-3">
-          <div>
-            <p className="flex items-center gap-2 text-lg font-semibold text-zinc-50">
-              <span className="flex size-7 items-center justify-center rounded-md bg-emerald-300 text-xs font-black text-zinc-950">A</span>
-              AGN
+          <div className="min-w-0">
+            <p className="text-lg font-semibold text-zinc-50">AGN</p>
+            <p className="truncate text-xs text-zinc-500">
+              Actually Good Notebook
             </p>
-            <p className="text-xs text-zinc-400">Actually-Good-Notebook</p>
           </div>
-          <Badge variant="outline" className="border-zinc-800 text-zinc-400">
-            SIR
-          </Badge>
+          <span className="text-[11px] font-medium text-zinc-600">LOCAL</span>
         </div>
         <input
           ref={fileInputRef}
@@ -75,7 +85,7 @@ export function SourceSidebar({
         <div className="mt-4 grid grid-cols-2 gap-2">
           <Button
             type="button"
-            className="bg-emerald-300 text-zinc-950 hover:bg-emerald-200"
+            variant="secondary"
             disabled={isLoading}
             onClick={() => fileInputRef.current?.click()}
           >
@@ -109,33 +119,41 @@ export function SourceSidebar({
         {decks.length > 0 ? (
           <div className="flex flex-col gap-2">
             {decks.map((deck) => {
-              const firstSlideNumber = deck.slides[0]?.slideNumber ?? 1;
+              const rememberedSlideNumber =
+                lastViewedSlideByDeckId[deck.id] ??
+                deck.slides[0]?.slideNumber ??
+                1;
               const isSelected = selectedSource?.deckId === deck.id;
 
               return (
-                <button
+                <div
                   key={deck.id}
-                  type="button"
                   className={cn(
-                    "rounded-lg border px-3 py-2 text-left transition-colors",
+                    "group relative flex rounded-lg border transition-colors",
                     isSelected
-                      ? "border-emerald-500/50 bg-emerald-500/10"
-                      : "border-zinc-800 bg-zinc-950 hover:bg-zinc-900",
+                      ? "border-zinc-700 bg-zinc-900"
+                      : "border-zinc-800 bg-zinc-950 hover:border-zinc-700 hover:bg-zinc-900/60",
                   )}
-                  onClick={() =>
-                    onSelectSource({
-                      deckId: deck.id,
-                      slideNumber: firstSlideNumber,
-                    })
-                  }
                 >
-                  <span className="flex items-start gap-2">
+                  {isSelected ? (
+                    <span className="absolute inset-y-2 left-0 w-0.5 rounded-r bg-emerald-400" />
+                  ) : null}
+                  <button
+                    type="button"
+                    className="flex min-w-0 flex-1 items-start gap-2 px-3 py-2.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-zinc-600"
+                    onClick={() =>
+                      onSelectSource({
+                        deckId: deck.id,
+                        slideNumber: rememberedSlideNumber,
+                      })
+                    }
+                  >
                     <FileText
-                      className="mt-0.5 size-4 shrink-0 text-zinc-500"
+                      className="mt-0.5 size-4 shrink-0 text-zinc-600"
                       aria-hidden="true"
                     />
                     <span className="min-w-0">
-                      <span className="block text-xs font-medium text-zinc-500">
+                      <span className="block text-xs text-zinc-500">
                         {deck.sourceLabel}
                       </span>
                       <span className="line-clamp-2 text-sm font-medium leading-5 text-zinc-100">
@@ -146,8 +164,25 @@ export function SourceSidebar({
                         slide{deck.manifest.slide_count === 1 ? "" : "s"}
                       </span>
                     </span>
-                  </span>
-                </button>
+                  </button>
+                  <button
+                    type="button"
+                    className="m-1.5 flex size-7 shrink-0 items-center justify-center rounded-md text-zinc-600 opacity-100 transition hover:bg-zinc-800 hover:text-red-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-600 sm:opacity-0 sm:focus-visible:opacity-100 sm:group-hover:opacity-100"
+                    aria-label={`Remove ${deck.manifest.title}`}
+                    title="Remove source"
+                    onClick={() => {
+                      if (
+                        window.confirm(
+                          `Remove "${deck.manifest.title}" from this browser?`,
+                        )
+                      ) {
+                        void onRemoveDeck(deck.id);
+                      }
+                    }}
+                  >
+                    <Trash2 className="size-3.5" aria-hidden="true" />
+                  </button>
+                </div>
               );
             })}
           </div>

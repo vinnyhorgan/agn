@@ -47,7 +47,7 @@ export function SourceSearch({
         />
         <Input
           value={query}
-          placeholder="Search sources"
+          placeholder="Search slides"
           className="border-zinc-800 bg-zinc-900 pl-8 text-zinc-100"
           onChange={(event) => onQueryChange(event.target.value)}
         />
@@ -57,7 +57,7 @@ export function SourceSearch({
       <div className="mt-3 min-h-0 flex-1 overflow-y-auto pr-1">
         {!trimmedQuery ? (
           <p className="text-sm leading-6 text-zinc-500">
-            Search runs locally across all uploaded SIR chunks.
+            Search slide titles and text across your local library.
           </p>
         ) : results.length > 0 ? (
           <div className="flex flex-col gap-2">
@@ -110,7 +110,7 @@ export function SourceSearch({
           </div>
         ) : (
           <p className="text-sm leading-6 text-zinc-500">
-            No matching source chunks.
+            No matching slides.
           </p>
         )}
       </div>

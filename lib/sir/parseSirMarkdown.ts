@@ -16,7 +16,9 @@ export function parseSirMarkdown(markdown: string): ParsedSirSlide[] {
     const markdownStart = (match.index ?? 0) + match[0].length;
     const nextMatch = matches[index + 1];
     const markdownEnd = nextMatch?.index ?? markdown.length;
-    const slideMarkdown = markdown.slice(markdownStart, markdownEnd);
+    const slideMarkdown = stripTrailingMarkdownRules(
+      markdown.slice(markdownStart, markdownEnd),
+    );
     const title = extractFirstH1(slideMarkdown);
 
     return {
@@ -25,6 +27,15 @@ export function parseSirMarkdown(markdown: string): ParsedSirSlide[] {
       markdown: slideMarkdown,
     };
   });
+}
+
+function stripTrailingMarkdownRules(markdown: string): string {
+  const stripped = markdown.replace(
+    /\n[ \t]{0,3}(?:-{3,}|\*{3,}|_{3,})[ \t]*(?:\r?\n)*$/,
+    "\n",
+  );
+
+  return stripped === markdown ? markdown : stripped.replace(/\n+$/, "\n");
 }
 
 function extractFirstH1(markdown: string): string | undefined {

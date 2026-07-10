@@ -19,6 +19,14 @@ interface OpenAiCompatibleResponse {
   };
 }
 
+interface OpenAiCompatibleStreamChunk {
+  choices?: Array<{
+    delta?: {
+      content?: unknown;
+    };
+  }>;
+}
+
 export class DeepInfraAuthenticationError extends Error {
   constructor() {
     super("DeepInfra rejected this API key. Check that it is valid and has access.");
@@ -43,7 +51,7 @@ export async function createDeepInfraChatCompletion({
     model: DEEPINFRA_MODEL,
     messages,
     temperature: 0.2,
-    reasoning_effort: "high",
+    reasoning_effort: "medium",
   };
 
   const response = await fetch(`${DEEPINFRA_BASE_URL}/chat/completions`, {
@@ -82,12 +90,71 @@ export async function createDeepInfraChatCompletion({
   };
 }
 
-export async function createDeepInfraChatCompletionViaRoute({
+export async function createDeepInfraChatCompletionStream({
   settings,
   messages,
+  signal,
 }: {
   settings: DeepInfraSettings;
   messages: LlmMessage[];
+  signal?: AbortSignal;
+}): Promise<ReadableStream<Uint8Array>> {
+  const apiKey = settings.apiKey.trim();
+
+  if (!apiKey) {
+    throw new Error("Add a valid DeepInfra API key before chatting.");
+  }
+
+  const body: ChatCompletionRequest = {
+    model: DEEPINFRA_MODEL,
+    messages,
+    temperature: 0.2,
+    reasoning_effort: "medium",
+    stream: true,
+  };
+  const response = await fetch(`${DEEPINFRA_BASE_URL}/chat/completions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify(body),
+    signal,
+  });
+
+  if (!response.ok) {
+    const payload = (await readJsonResponse(response)) as OpenAiCompatibleResponse;
+
+    if (response.status === 401 || response.status === 403) {
+      throw new DeepInfraAuthenticationError();
+    }
+
+    const providerMessage =
+      typeof payload.error?.message === "string" ? payload.error.message : "";
+    throw new Error(
+      providerMessage
+        ? `DeepInfra request failed (${response.status}): ${providerMessage}`
+        : `DeepInfra request failed with status ${response.status}.`,
+    );
+  }
+
+  if (!response.body) {
+    throw new Error("DeepInfra response did not include a stream.");
+  }
+
+  return parseOpenAiEventStream(response.body);
+}
+
+export async function streamDeepInfraChatCompletionViaRoute({
+  settings,
+  messages,
+  onDelta,
+  signal,
+}: {
+  settings: DeepInfraSettings;
+  messages: LlmMessage[];
+  onDelta: (delta: string) => void;
+  signal?: AbortSignal;
 }): Promise<ChatCompletionResult> {
   const apiKey = settings.apiKey.trim();
 
@@ -100,15 +167,12 @@ export async function createDeepInfraChatCompletionViaRoute({
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ apiKey, messages }),
+    body: JSON.stringify({ apiKey, messages, stream: true }),
+    signal,
   });
 
-  const payload = (await readJsonResponse(response)) as {
-    content?: unknown;
-    error?: unknown;
-  };
-
   if (!response.ok) {
+    const payload = (await readJsonResponse(response)) as { error?: unknown };
     throw new Error(
       typeof payload.error === "string"
         ? payload.error
@@ -116,13 +180,101 @@ export async function createDeepInfraChatCompletionViaRoute({
     );
   }
 
-  if (typeof payload.content !== "string" || payload.content.trim().length === 0) {
+  if (!response.body) {
+    throw new Error("DeepInfra response did not include a stream.");
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let content = "";
+
+  while (true) {
+    const { value, done } = await reader.read();
+
+    if (done) {
+      content += decoder.decode();
+      break;
+    }
+
+    const delta = decoder.decode(value, { stream: true });
+    content += delta;
+    onDelta(delta);
+  }
+
+  if (!content.trim()) {
     throw new Error("DeepInfra response did not include an assistant message.");
   }
 
-  return {
-    content: payload.content,
-  };
+  return { content };
+}
+
+function parseOpenAiEventStream(
+  upstream: ReadableStream<Uint8Array>,
+): ReadableStream<Uint8Array> {
+  const reader = upstream.getReader();
+  const decoder = new TextDecoder();
+  const encoder = new TextEncoder();
+
+  return new ReadableStream<Uint8Array>({
+    async start(controller) {
+      let buffer = "";
+
+      try {
+        while (true) {
+          const { value, done } = await reader.read();
+          buffer += decoder.decode(value, { stream: !done });
+
+          const lines = buffer.split(/\r?\n/);
+          buffer = done ? "" : (lines.pop() ?? "");
+
+          for (const line of lines) {
+            const delta = readStreamDelta(line);
+            if (delta) {
+              controller.enqueue(encoder.encode(delta));
+            }
+          }
+
+          if (done) {
+            if (buffer) {
+              const delta = readStreamDelta(buffer);
+              if (delta) {
+                controller.enqueue(encoder.encode(delta));
+              }
+            }
+            break;
+          }
+        }
+
+        controller.close();
+      } catch (error) {
+        controller.error(error);
+      } finally {
+        reader.releaseLock();
+      }
+    },
+    cancel() {
+      return reader.cancel();
+    },
+  });
+}
+
+function readStreamDelta(line: string): string | undefined {
+  if (!line.startsWith("data:")) {
+    return undefined;
+  }
+
+  const data = line.slice(5).trim();
+  if (!data || data === "[DONE]") {
+    return undefined;
+  }
+
+  try {
+    const payload = JSON.parse(data) as OpenAiCompatibleStreamChunk;
+    const content = payload.choices?.[0]?.delta?.content;
+    return typeof content === "string" ? content : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 async function readJsonResponse(response: Response): Promise<unknown> {

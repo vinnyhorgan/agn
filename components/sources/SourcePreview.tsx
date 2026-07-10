@@ -1,6 +1,13 @@
 "use client";
 
-import { BookOpen, ChevronLeft, ChevronRight } from "lucide-react";
+import {
+  BookOpen,
+  ChevronLeft,
+  ChevronRight,
+  Maximize2,
+  X,
+} from "lucide-react";
+import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -22,6 +29,7 @@ export function SourcePreview({
   selectedSource,
   onSelectSource,
 }: SourcePreviewProps) {
+  const [isImageOpen, setIsImageOpen] = useState(false);
   const deck = selectedSource
     ? decks.find((candidate) => candidate.id === selectedSource.deckId)
     : undefined;
@@ -41,16 +49,25 @@ export function SourcePreview({
       : -1;
   const isFirstSlide = slideIndex <= 0;
   const isLastSlide = deck ? slideIndex >= deck.slides.length - 1 : true;
-  const fallbackChunk = slide
-    ? sourceChunks.find(
-        (chunk) =>
-          chunk.deckId === deck?.id && chunk.slideNumber === slide.slideNumber,
-      )
-    : undefined;
-  const chunk = selectedChunk ?? fallbackChunk;
+  const chunk = selectedChunk;
   const imageUrl = slide
     ? deck?.imageUrlsBySlideNumber[slide.slideNumber]
     : undefined;
+
+  useEffect(() => {
+    if (!isImageOpen) {
+      return;
+    }
+
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setIsImageOpen(false);
+      }
+    }
+
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [isImageOpen]);
 
   function selectSlideByOffset(offset: number) {
     if (!deck || slideIndex < 0) {
@@ -139,14 +156,23 @@ export function SourcePreview({
 
           <section className="mt-4 overflow-hidden rounded-lg border border-zinc-800 bg-black/40 p-2 shadow-inner">
             {imageUrl ? (
-              // Object URLs are created in browser state and are not compatible
-              // with Next image optimization.
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={imageUrl}
-                alt={`Slide ${slide.slideNumber} from ${deck.manifest.title}`}
-                className="max-h-[42dvh] w-full rounded-md object-contain"
-              />
+              <button
+                type="button"
+                className="group relative block w-full cursor-zoom-in rounded-md outline-none focus-visible:ring-2 focus-visible:ring-zinc-500"
+                aria-label={`Enlarge slide ${slide.slideNumber}`}
+                onClick={() => setIsImageOpen(true)}
+              >
+                {/* Object URLs cannot use Next image optimization. */}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={imageUrl}
+                  alt={`Slide ${slide.slideNumber} from ${deck.manifest.title}`}
+                  className="max-h-[42dvh] w-full rounded-md object-contain"
+                />
+                <span className="absolute bottom-2 right-2 flex size-7 items-center justify-center rounded-md border border-white/10 bg-black/70 text-zinc-200 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                  <Maximize2 className="size-3.5" aria-hidden="true" />
+                </span>
+              </button>
             ) : (
               <p className="px-3 py-8 text-center text-sm text-zinc-500">
                 No image preview is available for this slide.
@@ -180,6 +206,42 @@ export function SourcePreview({
           </section>
         </div>
       )}
+      {isImageOpen && imageUrl && deck && slide ? (
+        <div
+          className="fixed inset-0 z-50 flex flex-col bg-black/95 p-3 sm:p-6"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Slide ${slide.slideNumber} image`}
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setIsImageOpen(false);
+            }
+          }}
+        >
+          <div className="mb-3 flex items-center justify-between gap-3 text-sm text-zinc-300">
+            <p className="truncate">
+              {deck.manifest.title} · Slide {slide.slideNumber}
+            </p>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label="Close enlarged slide"
+              onClick={() => setIsImageOpen(false)}
+            >
+              <X aria-hidden="true" />
+            </Button>
+          </div>
+          <div className="flex min-h-0 flex-1 items-center justify-center">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={imageUrl}
+              alt={`Slide ${slide.slideNumber} from ${deck.manifest.title}`}
+              className="max-h-full max-w-full object-contain"
+            />
+          </div>
+        </div>
+      ) : null}
     </aside>
   );
 }
@@ -226,6 +288,7 @@ function MarkdownContent({ markdown }: { markdown: string }) {
             {children}
           </blockquote>
         ),
+        hr: () => null,
         code: ({ children }) => (
           <code className="rounded bg-zinc-800 px-1 py-0.5 font-mono text-sm text-zinc-100">
             {children}

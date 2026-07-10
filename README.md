@@ -6,8 +6,10 @@ Actually-Good-Notebook is a local-first learning workspace for SIR slide decks. 
 
 - Strict SIR v1 archive validation and parsing
 - Multi-deck slide viewing with local WebP previews
-- Unicode-aware lexical search with slide-level metadata
-- Multi-turn DeepInfra chat with source-prioritized context
+- Persistent browser-local deck library and reading position
+- Unicode-aware BM25 search with slide-level metadata
+- Streaming multi-turn DeepInfra chat with source-prioritized context
+- Locally persisted conversation history
 - Verified, clickable source and slide citations
 - Browser-persisted BYOK API key
 - Responsive source, chat, and preview workspace

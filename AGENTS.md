@@ -29,7 +29,7 @@ Use:
 - shadcn/ui
 - SQLite later
 - Drizzle ORM later
-- local filesystem storage for MVP
+- browser IndexedDB storage for the local-first MVP
 - Vitest for unit tests
 
 This repo currently uses the top-level app directory, not src/app. Follow the existing structure unless explicitly asked to migrate.
@@ -125,6 +125,8 @@ AGN supports BYOK with DeepInfra as the only provider in the current phase.
 Never log API keys.
 
 Store the user's DeepInfra API key in browser localStorage so it persists between sessions. Never persist it on the server.
+
+Persist imported SIR archives in browser IndexedDB and conversation history in localStorage. Reloading the app must not discard the local library, reading positions, or completed chat turns.
 
 ## Engineering rules
 

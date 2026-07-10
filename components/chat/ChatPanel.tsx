@@ -1,17 +1,17 @@
 "use client";
 
-import { AlertCircle, LibraryBig, Loader2, Send, Trash2 } from "lucide-react";
+import { AlertCircle, Send, Square, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { ChatMessage } from "@/components/chat/ChatMessage";
 import { ProviderSettings } from "@/components/chat/ProviderSettings";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { buildGroundedMessages } from "@/lib/llm/groundedPrompt";
 import { repairModelCitations } from "@/lib/llm/citations";
-import { createDeepInfraChatCompletionViaRoute } from "@/lib/llm/openAiCompatible";
+import { buildGroundedMessages } from "@/lib/llm/groundedPrompt";
+import { streamDeepInfraChatCompletionViaRoute } from "@/lib/llm/openAiCompatible";
 import type { DeepInfraSettings } from "@/lib/llm/types";
-import { lexicalSearch } from "@/lib/search/lexicalSearch";
+import { retrieveSourceChunks } from "@/lib/search/retrieveSources";
 import type { SourceChunk } from "@/lib/search/types";
 import { cn } from "@/lib/utils";
 
@@ -23,93 +23,70 @@ interface ChatPanelProps {
     slideNumber: number;
     chunkId?: string;
   }) => void;
-  onSelectSlide?: (slideNumber: number) => void;
 }
+
+type ChatTurnStatus = "streaming" | "complete" | "stopped" | "error";
 
 interface ChatTurn {
   id: string;
   question: string;
-  answer?: string;
+  answer: string;
   sources: SourceChunk[];
+  status: ChatTurnStatus;
 }
 
-const retrievalLimit = 6;
+interface StoredChatTurn {
+  id: string;
+  question: string;
+  answer: string;
+  sourceIds: string[];
+  status: Exclude<ChatTurnStatus, "streaming">;
+}
+
 const historyLimit = 6;
+const storedTurnLimit = 40;
 const deepInfraApiKeyStorageKey = "agn.deepInfra.apiKey";
 const deepInfraApiKeyChangedEvent = "agn:deepinfra-api-key-changed";
-const defaultDeepInfraSettings: DeepInfraSettings = {
-  apiKey: "",
-};
-
+const chatHistoryStorageKey = "agn.chat.history";
+const chatHistoryChangedEvent = "agn:chat-history-changed";
 const missingApiKeyMessage = "Add a valid DeepInfra API key before chatting.";
-
-function readStoredDeepInfraApiKey(): string | undefined {
-  if (typeof window === "undefined") {
-    return undefined;
-  }
-
-  try {
-    return window.localStorage.getItem(deepInfraApiKeyStorageKey) ?? undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function subscribeToStoredDeepInfraApiKey(onStoreChange: () => void) {
-  function handleStorage(event: StorageEvent) {
-    if (event.key === deepInfraApiKeyStorageKey) {
-      onStoreChange();
-    }
-  }
-
-  window.addEventListener("storage", handleStorage);
-  window.addEventListener(deepInfraApiKeyChangedEvent, onStoreChange);
-
-  return () => {
-    window.removeEventListener("storage", handleStorage);
-    window.removeEventListener(deepInfraApiKeyChangedEvent, onStoreChange);
-  };
-}
-
-function writeStoredDeepInfraApiKey(apiKey: string) {
-  try {
-    if (apiKey) {
-      window.localStorage.setItem(deepInfraApiKeyStorageKey, apiKey);
-    } else {
-      window.localStorage.removeItem(deepInfraApiKeyStorageKey);
-    }
-
-    window.dispatchEvent(new Event(deepInfraApiKeyChangedEvent));
-  } catch {
-    // Keep chat usable even if the browser blocks localStorage writes.
-  }
-}
 
 export function ChatPanel({
   sourceChunks,
   sourceCount,
   onSelectSource,
-  onSelectSlide,
 }: ChatPanelProps) {
   const storedApiKey = useSyncExternalStore(
     subscribeToStoredDeepInfraApiKey,
-    () => readStoredDeepInfraApiKey() ?? defaultDeepInfraSettings.apiKey,
-    () => defaultDeepInfraSettings.apiKey,
+    () => readStorage(deepInfraApiKeyStorageKey),
+    () => "",
+  );
+  const storedTurnsJson = useSyncExternalStore(
+    subscribeToStoredChatHistory,
+    () => readStorage(chatHistoryStorageKey, "[]"),
+    () => "[]",
+  );
+  const storedTurns = useMemo(
+    () => parseStoredTurns(storedTurnsJson, sourceChunks),
+    [storedTurnsJson, sourceChunks],
   );
   const settings = useMemo<DeepInfraSettings>(
     () => ({ apiKey: storedApiKey }),
     [storedApiKey],
   );
+  const [sessionTurns, setSessionTurns] = useState<ChatTurn[]>();
   const [question, setQuestion] = useState("");
-  const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | undefined>();
+  const [error, setError] = useState<string>();
+  const abortControllerRef = useRef<AbortController | undefined>(undefined);
   const conversationEndRef = useRef<HTMLDivElement>(null);
-
+  const turns = sessionTurns ?? storedTurns;
   const hasSources = sourceChunks.length > 0;
 
   useEffect(() => {
-    conversationEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    conversationEndRef.current?.scrollIntoView({
+      behavior: isLoading ? "auto" : "smooth",
+    });
   }, [turns, isLoading]);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -126,19 +103,26 @@ export function ChatPanel({
       return;
     }
 
-    const directSources = hasSources
-      ? lexicalSearch(sourceChunks, trimmedQuestion, retrievalLimit).map(
-          (result) => result.chunk,
-        )
-      : [];
-    const previousSources =
-      directSources.length < 3 ? (turns.at(-1)?.sources ?? []) : [];
-    const sources = Array.from(
-      new Map(
-        [...directSources, ...previousSources].map((source) => [source.id, source]),
-      ).values(),
-    ).slice(0, retrievalLimit);
+    const currentTurns = turns;
+    const sources = retrieveSourceChunks({
+      chunks: sourceChunks,
+      query: trimmedQuestion,
+      previousSources: currentTurns.at(-1)?.sources,
+    });
+    const pendingTurn: ChatTurn = {
+      id: crypto.randomUUID(),
+      question: trimmedQuestion,
+      answer: "",
+      sources,
+      status: "streaming",
+    };
+    const nextTurns = [...currentTurns, pendingTurn];
+    const abortController = new AbortController();
+    let streamedAnswer = "";
 
+    abortControllerRef.current = abortController;
+    setSessionTurns(nextTurns);
+    setQuestion("");
     setIsLoading(true);
     setError(undefined);
 
@@ -146,35 +130,67 @@ export function ChatPanel({
       const messages = buildGroundedMessages({
         question: trimmedQuestion,
         sourceChunks: sources,
-        history: turns
-          .filter((turn) => turn.answer)
+        history: currentTurns
+          .filter((turn) => turn.answer && turn.status !== "error")
           .slice(-historyLimit)
-          .map((turn) => ({ question: turn.question, answer: turn.answer! })),
+          .map((turn) => ({ question: turn.question, answer: turn.answer })),
       });
-      const response = await createDeepInfraChatCompletionViaRoute({
+      const response = await streamDeepInfraChatCompletionViaRoute({
         settings,
         messages,
-      });
-
-      setTurns((currentTurns) => [
-        ...currentTurns,
-        {
-          id: crypto.randomUUID(),
-          question: trimmedQuestion,
-          answer: repairModelCitations(response.content, sources),
-          sources,
+        signal: abortController.signal,
+        onDelta(delta) {
+          streamedAnswer += delta;
+          setSessionTurns((current) =>
+            (current ?? nextTurns).map((turn) =>
+              turn.id === pendingTurn.id
+                ? { ...turn, answer: streamedAnswer }
+                : turn,
+            ),
+          );
         },
-      ]);
-      setQuestion("");
+      });
+      const completedTurn: ChatTurn = {
+        ...pendingTurn,
+        answer: repairModelCitations(response.content, sources),
+        status: "complete",
+      };
+      const completedTurns = [...currentTurns, completedTurn];
+      setSessionTurns(completedTurns);
+      writeStoredTurns(completedTurns);
     } catch (chatError) {
-      setError(
-        chatError instanceof Error
-          ? chatError.message
-          : "Could not complete the DeepInfra request.",
-      );
+      const wasStopped = abortController.signal.aborted;
+      const interruptedTurn: ChatTurn = {
+        ...pendingTurn,
+        answer: repairModelCitations(streamedAnswer, sources),
+        status: wasStopped ? "stopped" : "error",
+      };
+      const interruptedTurns = [...currentTurns, interruptedTurn];
+      setSessionTurns(interruptedTurns);
+      writeStoredTurns(interruptedTurns);
+
+      if (!wasStopped) {
+        setError(
+          chatError instanceof Error
+            ? chatError.message
+            : "Could not complete the DeepInfra request.",
+        );
+      }
     } finally {
+      abortControllerRef.current = undefined;
       setIsLoading(false);
     }
+  }
+
+  function stopGeneration() {
+    abortControllerRef.current?.abort();
+  }
+
+  function clearConversation() {
+    abortControllerRef.current?.abort();
+    setSessionTurns([]);
+    writeStoredTurns([]);
+    setError(undefined);
   }
 
   function selectSource(source: SourceChunk) {
@@ -183,7 +199,6 @@ export function ChatPanel({
       slideNumber: source.slideNumber,
       chunkId: source.id,
     });
-    onSelectSlide?.(source.slideNumber);
   }
 
   function handleQuestionKeyDown(
@@ -201,21 +216,22 @@ export function ChatPanel({
     <section className="flex h-full min-h-0 flex-col bg-zinc-950">
       <header className="flex min-h-14 items-center justify-between gap-2 border-b border-zinc-800 px-3 sm:gap-3 sm:px-4">
         <div className="min-w-0">
-          <h1 className="truncate text-sm font-semibold text-zinc-50">
-            Source-prioritized chat
-          </h1>
-          <p className="truncate text-xs text-zinc-400">
-            Uploaded SIR sources get first priority.
+          <h1 className="truncate text-sm font-semibold text-zinc-50">Chat</h1>
+          <p className="truncate text-xs text-zinc-500">
+            Sources are used first when relevant
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <Badge variant="outline" className="hidden border-zinc-800 text-zinc-300 sm:inline-flex">
+          <Badge
+            variant="outline"
+            className="hidden border-zinc-800 text-zinc-400 sm:inline-flex"
+          >
             {sourceCount ?? 0} source{(sourceCount ?? 0) === 1 ? "" : "s"}
           </Badge>
           <ProviderSettings
             settings={settings}
             onChange={(nextSettings) =>
-              writeStoredDeepInfraApiKey(nextSettings.apiKey)
+              writeStoredApiKey(nextSettings.apiKey)
             }
           />
           {turns.length > 0 ? (
@@ -225,7 +241,7 @@ export function ChatPanel({
               size="icon-sm"
               title="Clear conversation"
               aria-label="Clear conversation"
-              onClick={() => setTurns([])}
+              onClick={clearConversation}
             >
               <Trash2 aria-hidden="true" />
             </Button>
@@ -233,24 +249,21 @@ export function ChatPanel({
         </div>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5">
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-5 sm:px-4">
         {turns.length === 0 ? (
-          <div className="flex h-full min-h-[320px] items-center justify-center text-center">
-            <div className="max-w-md">
-              <div className="mx-auto mb-4 flex size-10 items-center justify-center rounded-lg border border-emerald-400/20 bg-emerald-400/10 text-emerald-300">
-                <LibraryBig className="size-5" aria-hidden="true" />
-              </div>
-              <h2 className="text-lg font-semibold text-zinc-100">
-                Learn from your sources
+          <div className="flex h-full min-h-[280px] items-center justify-center text-center">
+            <div className="max-w-sm">
+              <h2 className="text-base font-semibold text-zinc-100">
+                Ask about your library
               </h2>
-              <p className="mt-2 text-sm leading-6 text-zinc-300">
-                Ask naturally. AGN uses your decks first, cites supporting
-                slides, and fills gaps with general knowledge.
+              <p className="mt-2 text-sm leading-6 text-zinc-400">
+                AGN prioritizes your slides, cites the source, and can still
+                answer beyond them when needed.
               </p>
             </div>
           </div>
         ) : (
-          <div className="mx-auto flex max-w-3xl flex-col gap-5">
+          <div className="mx-auto flex max-w-3xl flex-col gap-6">
             {turns.map((turn) => (
               <ChatTurnView
                 key={turn.id}
@@ -260,58 +273,55 @@ export function ChatPanel({
             ))}
           </div>
         )}
-        {isLoading ? (
-          <div className="mx-auto mt-5 flex max-w-3xl items-center gap-2 text-sm text-zinc-500">
-            <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-            AGN is thinking
-          </div>
-        ) : null}
         <div ref={conversationEndRef} />
       </div>
 
-      <footer className="border-t border-zinc-800 bg-zinc-950 px-4 py-3">
+      <footer className="border-t border-zinc-800 bg-zinc-950 px-3 py-3 sm:px-4">
         {error ? (
           <div className="mx-auto mb-3 flex max-w-3xl items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm leading-6 text-destructive">
             <AlertCircle className="mt-1 size-4 shrink-0" aria-hidden="true" />
             <span>{error}</span>
           </div>
         ) : null}
-        {!hasSources ? (
-          <p className="mx-auto mb-2 max-w-3xl text-xs text-zinc-400">
-            No sources loaded. AGN will answer from general knowledge.
-          </p>
-        ) : null}
-        <form className="mx-auto flex max-w-3xl items-end gap-2" onSubmit={handleSubmit}>
+        <form
+          className="mx-auto flex max-w-3xl items-end gap-2 rounded-lg border border-zinc-700 bg-zinc-900 p-1.5 shadow-sm focus-within:border-zinc-500"
+          onSubmit={handleSubmit}
+        >
           <label className="sr-only" htmlFor="chat-question">
-            Ask a source-prioritized question
+            Ask a question
           </label>
           <textarea
             id="chat-question"
             value={question}
-            rows={2}
+            rows={1}
             placeholder={
-              hasSources
-                ? "Ask about your sources or anything else"
-                : "Ask anything"
+              hasSources ? "Ask about your sources or anything else" : "Ask anything"
             }
             disabled={isLoading}
-            className="max-h-36 min-h-14 flex-1 resize-none rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm leading-6 text-zinc-100 outline-none transition-colors placeholder:text-zinc-500 focus-visible:border-zinc-600 focus-visible:ring-3 focus-visible:ring-zinc-700/50 disabled:pointer-events-none disabled:opacity-50"
+            className="min-h-9 max-h-32 flex-1 resize-none bg-transparent px-2 py-1.5 text-sm leading-6 text-zinc-100 outline-none [field-sizing:content] placeholder:text-zinc-500 disabled:opacity-60"
             onKeyDown={handleQuestionKeyDown}
             onChange={(event) => setQuestion(event.target.value)}
           />
           <Button
-            type="submit"
-            size="icon-lg"
-            disabled={isLoading || !question.trim()}
-            aria-label="Send question"
+            type={isLoading ? "button" : "submit"}
+            size="icon"
+            variant={isLoading ? "secondary" : "default"}
+            disabled={!isLoading && !question.trim()}
+            aria-label={isLoading ? "Stop generation" : "Send question"}
+            onClick={isLoading ? stopGeneration : undefined}
           >
             {isLoading ? (
-              <Loader2 className="animate-spin" aria-hidden="true" />
+              <Square className="size-3.5 fill-current" aria-hidden="true" />
             ) : (
               <Send aria-hidden="true" />
             )}
           </Button>
         </form>
+        <p className="mx-auto mt-1.5 max-w-3xl px-1 text-[11px] text-zinc-600">
+          {hasSources
+            ? "Uploaded sources stay in this browser."
+            : "Upload a SIR source for slide-aware answers."}
+        </p>
       </footer>
     </section>
   );
@@ -356,8 +366,17 @@ function ChatTurnView({
           validCitations={validCitations}
           onCitationClick={selectCitation}
         />
-      ) : null}
-      {turn.sources.length > 0 ? (
+      ) : turn.status === "streaming" ? (
+        <div className="mr-auto flex items-center gap-1.5 px-1 py-2 text-sm text-zinc-500">
+          <span className="size-1.5 animate-pulse rounded-full bg-zinc-500" />
+          Thinking
+        </div>
+      ) : (
+        <p className="mr-auto px-1 text-xs text-zinc-600">
+          {turn.status === "stopped" ? "Generation stopped" : "No response received"}
+        </p>
+      )}
+      {turn.sources.length > 0 && turn.status !== "streaming" ? (
         <RetrievedSources sources={turn.sources} onSelectSource={onSelectSource} />
       ) : null}
     </article>
@@ -371,28 +390,170 @@ function RetrievedSources({
   sources: SourceChunk[];
   onSelectSource: (source: SourceChunk) => void;
 }) {
+  const slideSources = Array.from(
+    new Map(
+      sources.map((source) => [
+        `${source.deckId}:${source.slideNumber}`,
+        source,
+      ]),
+    ).values(),
+  );
+  const visibleSources = slideSources.slice(0, 6);
+  const remainingCount = slideSources.length - visibleSources.length;
+
   return (
-    <div className="mr-auto flex max-w-[86%] flex-wrap gap-2">
-      {sources.map((source) => (
+    <div className="mr-auto flex max-w-[94%] flex-wrap gap-1.5">
+      {visibleSources.map((source) => (
         <button
-          key={source.id}
+          key={`${source.deckId}:${source.slideNumber}`}
           type="button"
           className={cn(
-            "min-w-0 max-w-full rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-left text-xs transition-colors hover:border-zinc-600 hover:bg-zinc-800",
-            "focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
+            "min-w-0 max-w-full rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1 text-left text-xs text-zinc-400 transition-colors hover:border-zinc-600 hover:text-zinc-200",
+            "focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none",
           )}
           onClick={() => onSelectSource(source)}
         >
-          <span className="block truncate font-medium text-zinc-200">
-            {source.sourceLabel ? `${source.sourceLabel} · ` : ""}
-            {source.deckTitle}
-          </span>
-          <span className="mt-0.5 block truncate text-zinc-500">
-            Slide {source.slideNumber}
-            {source.slideTitle ? ` · ${source.slideTitle}` : ""}
-          </span>
+          {source.sourceLabel} · Slide {source.slideNumber}
         </button>
       ))}
+      {remainingCount > 0 ? (
+        <span className="px-1.5 py-1 text-xs text-zinc-600">
+          +{remainingCount} more slides
+        </span>
+      ) : null}
     </div>
+  );
+}
+
+function readStorage(key: string, fallback = ""): string {
+  if (typeof window === "undefined") {
+    return fallback;
+  }
+
+  try {
+    return window.localStorage.getItem(key) ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeStoredApiKey(apiKey: string) {
+  writeStorage(deepInfraApiKeyStorageKey, apiKey, deepInfraApiKeyChangedEvent);
+}
+
+function writeStoredTurns(turns: ChatTurn[]) {
+  const completedTurns = turns
+    .filter(
+      (
+        turn,
+      ): turn is ChatTurn & {
+        status: StoredChatTurn["status"];
+      } => turn.status !== "streaming",
+    )
+    .slice(-storedTurnLimit)
+    .map<StoredChatTurn>((turn) => ({
+      id: turn.id,
+      question: turn.question,
+      answer: turn.answer,
+      sourceIds: turn.sources.map((source) => source.id),
+      status: turn.status,
+    }));
+  writeStorage(
+    chatHistoryStorageKey,
+    JSON.stringify(completedTurns),
+    chatHistoryChangedEvent,
+  );
+}
+
+function writeStorage(key: string, value: string, changedEvent: string) {
+  try {
+    if (value) {
+      window.localStorage.setItem(key, value);
+    } else {
+      window.localStorage.removeItem(key);
+    }
+    window.dispatchEvent(new Event(changedEvent));
+  } catch {
+    // Browser storage can be blocked; the in-memory session still works.
+  }
+}
+
+function subscribeToStoredDeepInfraApiKey(onStoreChange: () => void) {
+  return subscribeToStorage(
+    deepInfraApiKeyStorageKey,
+    deepInfraApiKeyChangedEvent,
+    onStoreChange,
+  );
+}
+
+function subscribeToStoredChatHistory(onStoreChange: () => void) {
+  return subscribeToStorage(
+    chatHistoryStorageKey,
+    chatHistoryChangedEvent,
+    onStoreChange,
+  );
+}
+
+function subscribeToStorage(
+  key: string,
+  changedEvent: string,
+  onStoreChange: () => void,
+) {
+  function handleStorage(event: StorageEvent) {
+    if (event.key === key) {
+      onStoreChange();
+    }
+  }
+
+  window.addEventListener("storage", handleStorage);
+  window.addEventListener(changedEvent, onStoreChange);
+  return () => {
+    window.removeEventListener("storage", handleStorage);
+    window.removeEventListener(changedEvent, onStoreChange);
+  };
+}
+
+function parseStoredTurns(value: string, sourceChunks: SourceChunk[]): ChatTurn[] {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    const chunksById = new Map(sourceChunks.map((chunk) => [chunk.id, chunk]));
+
+    return parsed
+      .filter(isStoredChatTurn)
+      .slice(-storedTurnLimit)
+      .map((turn) => ({
+        id: turn.id,
+        question: turn.question,
+        answer: turn.answer,
+        sources: turn.sourceIds
+          .map((sourceId) => chunksById.get(sourceId))
+          .filter((source): source is SourceChunk => source !== undefined),
+        status: turn.status,
+      }));
+  } catch {
+    return [];
+  }
+}
+
+function isStoredChatTurn(value: unknown): value is StoredChatTurn {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const turn = value as Partial<StoredChatTurn>;
+  return (
+    typeof turn.id === "string" &&
+    typeof turn.question === "string" &&
+    typeof turn.answer === "string" &&
+    Array.isArray(turn.sourceIds) &&
+    turn.sourceIds.every((sourceId) => typeof sourceId === "string") &&
+    (turn.status === "complete" ||
+      turn.status === "stopped" ||
+      turn.status === "error")
   );
 }

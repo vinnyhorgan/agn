@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import {
   DeepInfraAuthenticationError,
   createDeepInfraChatCompletion,
+  createDeepInfraChatCompletionStream,
 } from "@/lib/llm/openAiCompatible";
 import type { LlmMessage, LlmMessageRole } from "@/lib/llm/types";
 
@@ -12,6 +13,9 @@ const allowedRoles = new Set<LlmMessageRole>([
   "user",
   "assistant",
 ]);
+const maxMessageCount = 30;
+const maxMessageCharacters = 120_000;
+const maxRequestCharacters = 300_000;
 
 export async function POST(request: Request) {
   let payload: unknown;
@@ -27,6 +31,7 @@ export async function POST(request: Request) {
 
   const apiKey = readApiKey(payload);
   const messages = readMessages(payload);
+  const shouldStream = readShouldStream(payload);
 
   if (!apiKey) {
     return NextResponse.json(
@@ -43,6 +48,22 @@ export async function POST(request: Request) {
   }
 
   try {
+    if (shouldStream) {
+      const stream = await createDeepInfraChatCompletionStream({
+        settings: { apiKey },
+        messages,
+        signal: request.signal,
+      });
+
+      return new Response(stream, {
+        headers: {
+          "Content-Type": "text/plain; charset=utf-8",
+          "Cache-Control": "no-cache, no-transform",
+          "X-Content-Type-Options": "nosniff",
+        },
+      });
+    }
+
     const result = await createDeepInfraChatCompletion({
       settings: { apiKey },
       messages,
@@ -58,6 +79,15 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ error: message }, { status });
   }
+}
+
+function readShouldStream(payload: unknown): boolean {
+  return Boolean(
+    payload &&
+      typeof payload === "object" &&
+      "stream" in payload &&
+      payload.stream === true,
+  );
 }
 
 function readApiKey(payload: unknown): string | undefined {
@@ -77,11 +107,16 @@ function readMessages(payload: unknown): LlmMessage[] | undefined {
 
   const messages = payload.messages;
 
-  if (!Array.isArray(messages)) {
+  if (
+    !Array.isArray(messages) ||
+    messages.length === 0 ||
+    messages.length > maxMessageCount
+  ) {
     return undefined;
   }
 
   const parsedMessages: LlmMessage[] = [];
+  let totalCharacters = 0;
 
   for (const message of messages) {
     if (
@@ -91,8 +126,14 @@ function readMessages(payload: unknown): LlmMessage[] | undefined {
       !("content" in message) ||
       typeof message.role !== "string" ||
       typeof message.content !== "string" ||
+      message.content.length > maxMessageCharacters ||
       !allowedRoles.has(message.role as LlmMessageRole)
     ) {
+      return undefined;
+    }
+
+    totalCharacters += message.content.length;
+    if (totalCharacters > maxRequestCharacters) {
       return undefined;
     }
 

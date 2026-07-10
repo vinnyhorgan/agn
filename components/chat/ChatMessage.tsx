@@ -24,13 +24,18 @@ export function ChatMessage({
   return (
     <div
       className={cn(
-        "rounded-lg border px-3.5 py-3 shadow-sm",
+        "rounded-lg px-3.5 py-3",
         role === "user"
-          ? "ml-auto max-w-[88%] border-emerald-300 bg-emerald-300 text-zinc-950 sm:max-w-[82%]"
-          : "mr-auto max-w-[94%] border-zinc-800 bg-zinc-900/70 text-zinc-100 sm:max-w-[88%]",
+          ? "ml-auto max-w-[88%] border border-zinc-700 bg-zinc-800 text-zinc-100 sm:max-w-[82%]"
+          : "mr-auto w-full max-w-[94%] px-1 text-zinc-100 sm:max-w-[90%]",
       )}
     >
-      <div className={cn("mb-1.5 text-xs font-semibold", role === "user" ? "text-emerald-950/70" : "text-zinc-500")}>
+      <div
+        className={cn(
+          "mb-1.5 text-xs font-semibold",
+          role === "user" ? "text-zinc-400" : "text-zinc-500",
+        )}
+      >
         {role === "user" ? "You" : "AGN"}
       </div>
       {role === "assistant" ? (
@@ -51,14 +56,15 @@ export function ChatMessage({
             h2: ({ children }) => <h2 className="mb-2 mt-3 text-sm font-semibold text-zinc-50">{children}</h2>,
             h3: ({ children }) => <h3 className="mb-2 mt-3 text-sm font-semibold text-zinc-100">{children}</h3>,
             code: ({ children }) => <code className="rounded bg-black/40 px-1 py-0.5 font-mono text-[0.85em] text-emerald-200">{children}</code>,
-            pre: ({ children }) => <pre className="mb-3 overflow-x-auto rounded-lg border border-zinc-800 bg-black/50 p-3 text-sm leading-6">{children}</pre>,
+            pre: ({ children }) => <pre className="mb-3 overflow-x-auto rounded-lg border border-zinc-800 bg-zinc-950 p-3 text-sm leading-6 [&_code]:bg-transparent [&_code]:p-0 [&_code]:text-zinc-200">{children}</pre>,
             blockquote: ({ children }) => <blockquote className="mb-3 border-l-2 border-emerald-400 pl-3 text-zinc-400">{children}</blockquote>,
+            hr: () => null,
           }}
         >
           {content}
         </ReactMarkdown>
       ) : (
-        <div className="whitespace-pre-wrap text-sm leading-6 text-zinc-950">{content}</div>
+        <div className="whitespace-pre-wrap text-sm leading-6 text-zinc-100">{content}</div>
       )}
     </div>
   );

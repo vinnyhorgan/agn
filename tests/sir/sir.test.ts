@@ -96,6 +96,21 @@ describe("SIR v1 validation", () => {
     expectErrorCode(result, "slide_marker_count_mismatch");
   });
 
+  it("rejects an unreasonable slide count before allocating image paths", async () => {
+    const input = await createSirArchive({
+      manifest: {
+        sir: 1,
+        title: "Too Large",
+        language: "en",
+        slide_count: 2_001,
+      },
+    });
+
+    const result = await validateSirFile(input);
+
+    expectErrorCode(result, "manifest_slide_count_too_large");
+  });
+
   it("rejects a missing slide image", async () => {
     const input = await createSirArchive({ slideImages: ["slides/0001.webp"] });
 
@@ -151,6 +166,24 @@ Plain body.
         markdown: "\nPlain body.\n\n# Slide 2 - Details\n",
       },
     ]);
+  });
+
+  it("removes compiler separators at the end of slide Markdown", () => {
+    const slides = parseSirMarkdown(`
+<!-- slide: 1 -->
+# One
+
+Body.
+
+---
+<!-- slide: 2 -->
+# Two
+
+***
+`);
+
+    expect(slides[0]?.markdown).toBe("\n# One\n\nBody.\n");
+    expect(slides[1]?.markdown).toBe("\n# Two\n");
   });
 
   it("parseSirFile validates and returns manifest, slides, and image paths", async () => {

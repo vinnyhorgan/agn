@@ -9,10 +9,24 @@ import type {
 
 const requiredManifestFields = ["sir", "title", "language", "slide_count"];
 const allowedRootEntries = new Set(["manifest.json", "sir.md", "slides"]);
+const maxArchiveBytes = 256 * 1024 * 1024;
+const maxSlideCount = 2_000;
 
 export async function validateSirFile(
   input: ArrayBuffer | Uint8Array,
 ): Promise<SirValidationResult> {
+  if (input.byteLength > maxArchiveBytes) {
+    return {
+      valid: false,
+      errors: [
+        {
+          code: "sir_archive_too_large",
+          message: "SIR archives must be 256 MB or smaller.",
+        },
+      ],
+    };
+  }
+
   let zip: JSZip;
 
   try {
@@ -193,6 +207,12 @@ async function readAndValidateManifest(
     errors.push({
       code: "invalid_manifest_slide_count",
       message: "manifest.slide_count must be a positive integer.",
+      path: "manifest.json",
+    });
+  } else if (manifest.slide_count > maxSlideCount) {
+    errors.push({
+      code: "manifest_slide_count_too_large",
+      message: `manifest.slide_count must not exceed ${maxSlideCount}.`,
       path: "manifest.json",
     });
   }

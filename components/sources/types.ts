@@ -4,6 +4,7 @@ export interface BrowserSirDeck extends ParsedSirFile {
   id: string;
   sourceLabel: string;
   fileName: string;
+  contentHash: string;
   imageUrlsBySlideNumber: Record<number, string>;
 }
 

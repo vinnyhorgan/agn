@@ -24,7 +24,7 @@ describe("grounded prompt construction", () => {
     const systemMessage = messages[0]?.content ?? "";
 
     expect(systemMessage).toContain(
-      "Uploaded SIR excerpts are your highest-priority evidence.",
+      "Uploaded SIR source material is your highest-priority evidence.",
     );
     expect(systemMessage).toContain(
       "you may supplement with general knowledge",
@@ -63,7 +63,7 @@ describe("grounded prompt construction", () => {
     const promptText = messages.map((message) => message.content).join("\n");
 
     expect(promptText).toContain(
-      "No relevant SIR source excerpts were retrieved for this message.",
+      "No relevant uploaded source material was found for this message.",
     );
     expect(promptText).toContain("User question:\nHello");
   });

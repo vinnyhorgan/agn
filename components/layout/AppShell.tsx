@@ -10,21 +10,33 @@ import type { BrowserSirDeck, SelectedSource } from "@/components/sources/types"
 import { Button } from "@/components/ui/button";
 import { chunkSlides } from "@/lib/search/chunkSlides";
 import { lexicalSearch } from "@/lib/search/lexicalSearch";
-import { readSirImageObjectUrls } from "@/lib/sir/readSirImages";
+import type { SearchResult } from "@/lib/search/types";
 import { parseSirFile } from "@/lib/sir/importSir";
+import { readSirImageObjectUrls } from "@/lib/sir/readSirImages";
 import type { SirValidationError } from "@/lib/sir/types";
 import { validateSirFile } from "@/lib/sir/validateSir";
+import {
+  deleteStoredSirDeck,
+  hashSirArchive,
+  listStoredSirDecks,
+  storeSirDeck,
+  type StoredSirDeck,
+} from "@/lib/storage/sirDeckStore";
 import { cn } from "@/lib/utils";
 
 type MobilePane = "sources" | "chat" | "preview";
+const slidePositionStorageKey = "agn.library.slide-positions";
 
 export function AppShell() {
   const objectUrlsRef = useRef<string[]>([]);
   const [decks, setDecks] = useState<BrowserSirDeck[]>([]);
   const [selectedSource, setSelectedSource] = useState<SelectedSource>();
+  const [lastViewedSlideByDeckId, setLastViewedSlideByDeckId] = useState<
+    Record<string, number>
+  >({});
   const [searchQuery, setSearchQuery] = useState("");
   const [errors, setErrors] = useState<SirValidationError[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [mobilePane, setMobilePane] = useState<MobilePane>("chat");
 
   const sourceChunks = useMemo(
@@ -38,17 +50,99 @@ export function AppShell() {
     [decks],
   );
   const searchResults = useMemo(
-    () => lexicalSearch(sourceChunks, searchQuery, sourceChunks.length),
+    () =>
+      deduplicateSlideResults(
+        lexicalSearch(sourceChunks, searchQuery, sourceChunks.length),
+      ),
     [sourceChunks, searchQuery],
   );
   const topSearchResults = searchResults.slice(0, 12);
 
   useEffect(() => {
-    const objectUrls = objectUrlsRef.current;
+    let cancelled = false;
+
+    async function restoreLibrary() {
+      const restoredDecks: BrowserSirDeck[] = [];
+      const restoredUrls: string[] = [];
+      const restoreErrors: SirValidationError[] = [];
+
+      try {
+        const storedDecks = await listStoredSirDecks();
+
+        for (const storedDeck of storedDecks) {
+          try {
+            const deck = await createBrowserDeck(storedDeck.data, storedDeck);
+            restoredDecks.push(deck);
+            restoredUrls.push(...Object.values(deck.imageUrlsBySlideNumber));
+          } catch {
+            restoreErrors.push({
+              code: "stored_sir_read_failed",
+              message: "A saved SIR file could not be restored and was skipped.",
+              path: storedDeck.fileName,
+            });
+          }
+        }
+
+        if (cancelled) {
+          revokeObjectUrls(restoredUrls);
+          return;
+        }
+
+        objectUrlsRef.current.push(...restoredUrls);
+        setDecks(restoredDecks);
+        setErrors(restoreErrors);
+        const storedPositions = readSlidePositions();
+        const restoredPositions = Object.fromEntries(
+          restoredDecks.map((deck) => {
+            const storedSlide = storedPositions[deck.id];
+            const slideNumber = deck.slides.some(
+              (slide) => slide.slideNumber === storedSlide,
+            )
+              ? storedSlide
+              : (deck.slides[0]?.slideNumber ?? 1);
+            return [deck.id, slideNumber];
+          }),
+        );
+        setLastViewedSlideByDeckId(restoredPositions);
+        writeSlidePositions(restoredPositions);
+
+        const firstDeck = restoredDecks[0];
+        if (firstDeck) {
+          setSelectedSource({
+            deckId: firstDeck.id,
+            slideNumber:
+              restoredPositions[firstDeck.id] ??
+              firstDeck.slides[0]?.slideNumber ??
+              1,
+          });
+        }
+      } catch {
+        if (!cancelled) {
+          setErrors([
+            {
+              code: "local_library_unavailable",
+              message: "The local SIR library could not be opened.",
+            },
+          ]);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    void restoreLibrary();
 
     return () => {
-      revokeObjectUrls(objectUrls);
+      cancelled = true;
     };
+  }, []);
+
+  useEffect(() => {
+    const objectUrls = objectUrlsRef.current;
+
+    return () => revokeObjectUrls(objectUrls);
   }, []);
 
   async function handleUploadFiles(files: FileList | null) {
@@ -61,9 +155,11 @@ export function AppShell() {
     setIsLoading(true);
     setErrors([]);
 
-    const nextDecks: Omit<BrowserSirDeck, "sourceLabel">[] = [];
+    const nextDecks: BrowserSirDeck[] = [];
     const nextErrors: SirValidationError[] = [];
     const nextObjectUrls: string[] = [];
+    const knownHashes = new Set(decks.map((deck) => deck.contentHash));
+    let nextSourceNumber = getNextSourceNumber(decks);
 
     try {
       for (const file of selectedFiles) {
@@ -77,6 +173,17 @@ export function AppShell() {
         }
 
         const input = await file.arrayBuffer();
+        const contentHash = await hashSirArchive(input);
+
+        if (knownHashes.has(contentHash)) {
+          nextErrors.push({
+            code: "duplicate_sir_file",
+            message: "This exact SIR file is already in your library.",
+            path: file.name,
+          });
+          continue;
+        }
+
         const validation = await validateSirFile(input);
 
         if (!validation.valid) {
@@ -89,50 +196,40 @@ export function AppShell() {
           continue;
         }
 
-        const parsed = await parseSirFile(input);
-        const imageUrlsBySlideNumber = await readSirImageObjectUrls(
-          input,
-          parsed.imagePaths,
-        );
-        const imageUrls = Object.values(imageUrlsBySlideNumber);
-        nextObjectUrls.push(...imageUrls);
-        nextDecks.push({
-          ...parsed,
+        const storedDeck: StoredSirDeck = {
           id: crypto.randomUUID(),
+          sourceLabel: `Source ${nextSourceNumber}`,
           fileName: file.name,
-          imageUrlsBySlideNumber,
-        });
+          contentHash,
+          uploadedAt: Date.now() + nextDecks.length,
+          data: input,
+        };
+        const deck = await createBrowserDeck(input, storedDeck);
+
+        await storeSirDeck(storedDeck);
+        nextDecks.push(deck);
+        nextObjectUrls.push(...Object.values(deck.imageUrlsBySlideNumber));
+        knownHashes.add(contentHash);
+        nextSourceNumber += 1;
       }
 
       if (nextDecks.length > 0) {
         objectUrlsRef.current.push(...nextObjectUrls);
-        setDecks((currentDecks) => {
-          const offset = currentDecks.length;
-          return [
-            ...currentDecks,
-            ...nextDecks.map((deck, index) => ({
-              ...deck,
-              sourceLabel: `Source ${offset + index + 1}`,
-            })),
-          ];
-        });
-        setSelectedSource((currentSelection) => {
-          if (currentSelection) {
-            return currentSelection;
-          }
-
-          const firstDeck = nextDecks[0];
-          const firstSlideNumber = firstDeck?.slides[0]?.slideNumber;
-
-          if (!firstDeck || firstSlideNumber === undefined) {
-            return currentSelection;
-          }
-
-          return {
-            deckId: firstDeck.id,
-            slideNumber: firstSlideNumber,
-          };
-        });
+        setDecks((currentDecks) => [...currentDecks, ...nextDecks]);
+        const nextPositions = {
+          ...lastViewedSlideByDeckId,
+          ...Object.fromEntries(
+            nextDecks.map((deck) => [deck.id, deck.slides[0]?.slideNumber ?? 1]),
+          ),
+        };
+        setLastViewedSlideByDeckId(nextPositions);
+        writeSlidePositions(nextPositions);
+        setSelectedSource((currentSelection) =>
+          currentSelection ?? {
+            deckId: nextDecks[0]!.id,
+            slideNumber: nextDecks[0]!.slides[0]?.slideNumber ?? 1,
+          },
+        );
       }
 
       setErrors(nextErrors);
@@ -144,7 +241,7 @@ export function AppShell() {
           message:
             error instanceof Error
               ? error.message
-              : "Could not read and parse the selected SIR file.",
+              : "Could not save the selected SIR file.",
         },
       ]);
     } finally {
@@ -152,8 +249,61 @@ export function AppShell() {
     }
   }
 
+  async function handleRemoveDeck(deckId: string) {
+    const deck = decks.find((candidate) => candidate.id === deckId);
+
+    if (!deck) {
+      return;
+    }
+
+    try {
+      await deleteStoredSirDeck(deckId);
+      const deckUrls = Object.values(deck.imageUrlsBySlideNumber);
+      revokeObjectUrls(deckUrls);
+      objectUrlsRef.current = objectUrlsRef.current.filter(
+        (objectUrl) => !deckUrls.includes(objectUrl),
+      );
+
+      const remainingDecks = decks.filter((candidate) => candidate.id !== deckId);
+      setDecks(remainingDecks);
+      const nextPositions = { ...lastViewedSlideByDeckId };
+      delete nextPositions[deckId];
+      setLastViewedSlideByDeckId(nextPositions);
+      writeSlidePositions(nextPositions);
+
+      if (selectedSource?.deckId === deckId) {
+        const nextDeck = remainingDecks[0];
+        setSelectedSource(
+          nextDeck
+            ? {
+                deckId: nextDeck.id,
+                slideNumber:
+                  lastViewedSlideByDeckId[nextDeck.id] ??
+                  nextDeck.slides[0]?.slideNumber ??
+                  1,
+              }
+            : undefined,
+        );
+      }
+    } catch {
+      setErrors([
+        {
+          code: "source_remove_failed",
+          message: "The source could not be removed from local storage.",
+          path: deck.fileName,
+        },
+      ]);
+    }
+  }
+
   function selectSource(source: SelectedSource) {
     setSelectedSource(source);
+    const nextPositions = {
+      ...lastViewedSlideByDeckId,
+      [source.deckId]: source.slideNumber,
+    };
+    setLastViewedSlideByDeckId(nextPositions);
+    writeSlidePositions(nextPositions);
     setMobilePane("preview");
   }
 
@@ -168,7 +318,9 @@ export function AppShell() {
           searchResultCount={searchResults.length}
           searchResults={topSearchResults}
           selectedSource={selectedSource}
+          lastViewedSlideByDeckId={lastViewedSlideByDeckId}
           onUploadFiles={handleUploadFiles}
+          onRemoveDeck={handleRemoveDeck}
           onSearchQueryChange={setSearchQuery}
           onSelectSource={selectSource}
         />
@@ -185,11 +337,60 @@ export function AppShell() {
           decks={decks}
           sourceChunks={sourceChunks}
           selectedSource={selectedSource}
-          onSelectSource={setSelectedSource}
+          onSelectSource={selectSource}
         />
       </div>
       <MobileNavigation activePane={mobilePane} onChange={setMobilePane} />
     </main>
+  );
+}
+
+async function createBrowserDeck(
+  input: ArrayBuffer,
+  storedDeck: Pick<
+    StoredSirDeck,
+    "id" | "sourceLabel" | "fileName" | "contentHash"
+  >,
+): Promise<BrowserSirDeck> {
+  const parsed = await parseSirFile(input);
+  const imageUrlsBySlideNumber = await readSirImageObjectUrls(
+    input,
+    parsed.imagePaths,
+  );
+
+  return {
+    ...parsed,
+    id: storedDeck.id,
+    sourceLabel: storedDeck.sourceLabel,
+    fileName: storedDeck.fileName,
+    contentHash: storedDeck.contentHash,
+    imageUrlsBySlideNumber,
+  };
+}
+
+function deduplicateSlideResults(results: SearchResult[]): SearchResult[] {
+  const seenSlides = new Set<string>();
+
+  return results.filter((result) => {
+    const slideId = `${result.chunk.deckId}:${result.chunk.slideNumber}`;
+
+    if (seenSlides.has(slideId)) {
+      return false;
+    }
+
+    seenSlides.add(slideId);
+    return true;
+  });
+}
+
+function getNextSourceNumber(decks: BrowserSirDeck[]): number {
+  return (
+    Math.max(
+      0,
+      ...decks.map(
+        (deck) => Number(deck.sourceLabel.match(/\d+/)?.[0] ?? 0),
+      ),
+    ) + 1
   );
 }
 
@@ -230,5 +431,37 @@ function MobileNavigation({
 function revokeObjectUrls(objectUrls: string[]) {
   for (const objectUrl of objectUrls) {
     URL.revokeObjectURL(objectUrl);
+  }
+}
+
+function readSlidePositions(): Record<string, number> {
+  try {
+    const parsed = JSON.parse(
+      window.localStorage.getItem(slidePositionStorageKey) ?? "{}",
+    ) as unknown;
+
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return {};
+    }
+
+    return Object.fromEntries(
+      Object.entries(parsed).filter(
+        (entry): entry is [string, number] =>
+          typeof entry[1] === "number" && Number.isInteger(entry[1]),
+      ),
+    );
+  } catch {
+    return {};
+  }
+}
+
+function writeSlidePositions(positions: Record<string, number>) {
+  try {
+    window.localStorage.setItem(
+      slidePositionStorageKey,
+      JSON.stringify(positions),
+    );
+  } catch {
+    // The deck library still works when browser storage is unavailable.
   }
 }

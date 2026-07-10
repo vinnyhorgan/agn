@@ -4,6 +4,7 @@ import {
   DEEPINFRA_BASE_URL,
   DEEPINFRA_MODEL,
   createDeepInfraChatCompletion,
+  createDeepInfraChatCompletionStream,
 } from "../../lib/llm/openAiCompatible";
 import type { LlmMessage } from "../../lib/llm/types";
 
@@ -19,7 +20,7 @@ describe("DeepInfra chat completion", () => {
     vi.unstubAllGlobals();
   });
 
-  it("uses the fixed DeepInfra model and high reasoning effort", async () => {
+  it("uses the fixed DeepInfra model and medium reasoning effort", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -52,7 +53,7 @@ describe("DeepInfra chat completion", () => {
       model: DEEPINFRA_MODEL,
       messages,
       temperature: 0.2,
-      reasoning_effort: "high",
+      reasoning_effort: "medium",
     });
   });
 
@@ -86,5 +87,42 @@ describe("DeepInfra chat completion", () => {
     ).rejects.toThrow(
       "DeepInfra rejected this API key. Check that it is valid and has access.",
     );
+  });
+
+  it("converts OpenAI-compatible events into a plain text stream", async () => {
+    const encoder = new TextEncoder();
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(
+                'data: {"choices":[{"delta":{"content":"Hello "}}]}\n\n',
+              ),
+            );
+            controller.enqueue(
+              encoder.encode(
+                'data: {"choices":[{"delta":{"content":"world"}}]}\n\ndata: [DONE]\n\n',
+              ),
+            );
+            controller.close();
+          },
+        }),
+        { status: 200 },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const stream = await createDeepInfraChatCompletionStream({
+      settings: { apiKey: "deepinfra-key" },
+      messages,
+    });
+
+    expect(await new Response(stream).text()).toBe("Hello world");
+    const request = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect(JSON.parse(String(request.body))).toMatchObject({
+      stream: true,
+      reasoning_effort: "medium",
+    });
   });
 });
