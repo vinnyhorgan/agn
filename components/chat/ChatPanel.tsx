@@ -257,9 +257,10 @@ export function ChatPanel({
         {turns.length === 0 ? (
           <div className="flex h-full min-h-[280px] items-center justify-center text-center">
             <div className="max-w-sm">
-              <div className="mx-auto mb-4 flex size-10 items-center justify-center rounded-2xl border border-primary/15 bg-accent text-sm font-semibold text-primary shadow-sm">
-                A
-              </div>
+              <div
+                className="mx-auto mb-4 size-8 rounded-full bg-primary shadow-sm shadow-primary/20"
+                aria-hidden="true"
+              />
               <h2 className="text-base font-semibold text-foreground">
                 Ask about your library
               </h2>
@@ -313,7 +314,7 @@ export function ChatPanel({
             type={isLoading ? "button" : "submit"}
             size="icon"
             variant={isLoading ? "secondary" : "default"}
-            className="rounded-xl"
+            className="size-9 rounded-xl"
             disabled={!isLoading && !question.trim()}
             aria-label={isLoading ? "Stop generation" : "Send question"}
             onClick={isLoading ? stopGeneration : undefined}

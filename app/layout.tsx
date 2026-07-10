@@ -13,8 +13,11 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AGN | Actually-Good-Notebook",
+  title: "agn by dvh",
   description: "Learn from your slide decks with source-prioritized AI chat.",
+  icons: {
+    icon: "/icon.svg",
+  },
 };
 
 const themeScript = `

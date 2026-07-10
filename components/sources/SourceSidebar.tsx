@@ -68,21 +68,20 @@ export function SourceSidebar({
       <div className="border-b border-border px-4 py-4">
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-2.5">
-            <span className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-primary text-sm font-bold tracking-tight text-primary-foreground shadow-sm shadow-primary/15">
-              A
-            </span>
+            <span
+              className="size-7 shrink-0 rounded-full bg-primary shadow-sm shadow-primary/20"
+              aria-hidden="true"
+            />
             <div className="min-w-0">
-              <p className="text-base font-semibold tracking-tight text-foreground">AGN</p>
+              <p className="text-base font-semibold tracking-tight text-foreground">
+                agn by dvh
+              </p>
               <p className="truncate text-xs text-muted-foreground">
                 Actually Good Notebook
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-1">
-            <span className="hidden items-center gap-1.5 rounded-full border border-border bg-background/70 px-2 py-1 text-[10px] font-semibold tracking-[0.08em] text-muted-foreground xl:flex">
-              <span className="size-1.5 rounded-full bg-primary" />
-              LOCAL
-            </span>
+          <div className="flex items-center">
             <ThemeToggle />
           </div>
         </div>

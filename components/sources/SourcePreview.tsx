@@ -55,21 +55,6 @@ export function SourcePreview({
     ? deck?.imageUrlsBySlideNumber[slide.slideNumber]
     : undefined;
 
-  useEffect(() => {
-    if (!isImageOpen) {
-      return;
-    }
-
-    function closeOnEscape(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        setIsImageOpen(false);
-      }
-    }
-
-    document.addEventListener("keydown", closeOnEscape);
-    return () => document.removeEventListener("keydown", closeOnEscape);
-  }, [isImageOpen]);
-
   function selectSlideByOffset(offset: number) {
     if (!deck || slideIndex < 0) {
       return;
@@ -86,6 +71,38 @@ export function SourcePreview({
       slideNumber: nextSlide.slideNumber,
     });
   }
+
+  useEffect(() => {
+    if (!isImageOpen) {
+      return;
+    }
+
+    function handleFullscreenKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setIsImageOpen(false);
+        return;
+      }
+
+      const offset = event.key === "ArrowLeft" ? -1 : event.key === "ArrowRight" ? 1 : 0;
+
+      if (offset === 0 || !deck || slideIndex < 0) {
+        return;
+      }
+
+      const nextSlide = deck.slides[slideIndex + offset];
+
+      if (nextSlide) {
+        event.preventDefault();
+        onSelectSource({
+          deckId: deck.id,
+          slideNumber: nextSlide.slideNumber,
+        });
+      }
+    }
+
+    document.addEventListener("keydown", handleFullscreenKeyDown);
+    return () => document.removeEventListener("keydown", handleFullscreenKeyDown);
+  }, [deck, isImageOpen, onSelectSource, slideIndex]);
 
   return (
     <aside className="flex h-full min-h-0 flex-col border-l border-border bg-sidebar text-sidebar-foreground">
@@ -225,9 +242,12 @@ export function SourcePreview({
           }}
         >
           <div className="mb-3 flex items-center justify-between gap-3 text-sm text-white/80">
-            <p className="truncate">
-              {deck.manifest.title} · Slide {slide.slideNumber}
-            </p>
+            <div className="min-w-0">
+              <p className="truncate">{deck.manifest.title}</p>
+              <p className="text-xs text-white/50">
+                Slide {slide.slideNumber} of {deck.manifest.slide_count}
+              </p>
+            </div>
             <Button
               type="button"
               variant="ghost"
@@ -238,13 +258,35 @@ export function SourcePreview({
               <X aria-hidden="true" />
             </Button>
           </div>
-          <div className="flex min-h-0 flex-1 items-center justify-center">
+          <div className="relative flex min-h-0 flex-1 items-center justify-center">
+            <Button
+              type="button"
+              variant="secondary"
+              size="icon-lg"
+              className="absolute left-1 z-10 rounded-full border border-white/15 bg-black/55 text-white shadow-xl backdrop-blur-md hover:bg-black/75 disabled:invisible sm:left-3"
+              disabled={isFirstSlide}
+              aria-label="Previous slide"
+              onClick={() => selectSlideByOffset(-1)}
+            >
+              <ChevronLeft aria-hidden="true" />
+            </Button>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={imageUrl}
               alt={`Slide ${slide.slideNumber} from ${deck.manifest.title}`}
               className="max-h-full max-w-full object-contain"
             />
+            <Button
+              type="button"
+              variant="secondary"
+              size="icon-lg"
+              className="absolute right-1 z-10 rounded-full border border-white/15 bg-black/55 text-white shadow-xl backdrop-blur-md hover:bg-black/75 disabled:invisible sm:right-3"
+              disabled={isLastSlide}
+              aria-label="Next slide"
+              onClick={() => selectSlideByOffset(1)}
+            >
+              <ChevronRight aria-hidden="true" />
+            </Button>
           </div>
         </div>
       ) : null}

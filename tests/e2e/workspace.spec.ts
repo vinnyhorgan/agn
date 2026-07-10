@@ -4,7 +4,7 @@ import JSZip from "jszip";
 test("renders the responsive notebook workspace", async ({ page }, testInfo) => {
   await page.goto("/");
 
-  await expect(page).toHaveTitle(/Actually-Good-Notebook/);
+  await expect(page).toHaveTitle("agn by dvh");
   await expect(page.getByRole("heading", { name: "Chat" })).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Ask about your library" }),
@@ -86,6 +86,10 @@ test("persists unique decks and remembers each deck's slide", async ({
   await expect(page.getByText("Slide 2 / 3")).toBeVisible();
 
   await page.getByRole("button", { name: "Enlarge slide 2" }).click();
+  await expect(page.getByRole("dialog", { name: "Slide 2 image" })).toBeVisible();
+  await page.getByRole("button", { name: "Next slide" }).click();
+  await expect(page.getByRole("dialog", { name: "Slide 3 image" })).toBeVisible();
+  await page.keyboard.press("ArrowLeft");
   await expect(page.getByRole("dialog", { name: "Slide 2 image" })).toBeVisible();
   await page.getByRole("button", { name: "Close enlarged slide" }).click();
 
