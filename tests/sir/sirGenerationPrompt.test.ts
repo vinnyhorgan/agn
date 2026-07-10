@@ -24,10 +24,16 @@ describe("SIR generation prompt", () => {
     expect(sirGenerationPrompt).toContain("ER diagrams");
     expect(sirGenerationPrompt).toContain("Markdown files");
     expect(sirGenerationPrompt).toContain("Never silently omit a supported source");
-    expect(sirGenerationPrompt).toContain("Struttura visiva rilevata");
-    expect(sirGenerationPrompt).toContain("CREATE VIEW OLANDA");
-    expect(sirGenerationPrompt).toContain("Panchina");
+    expect(sirGenerationPrompt).toContain("content transcribed after visual review");
+    expect(sirGenerationPrompt).toContain("exact relative path");
     expect(sirGenerationPrompt).toContain("internal ledger");
     expect(sirGenerationPrompt).toContain("actually inspect every rendered page visually");
+  });
+
+  it("is generic and contains no reference-corpus acceptance anchors", () => {
+    expect(sirGenerationPrompt).not.toContain("OLANDA");
+    expect(sirGenerationPrompt).not.toContain("Panchina");
+    expect(sirGenerationPrompt).not.toContain("1158");
+    expect(sirGenerationPrompt).not.toContain("reference database corpus");
   });
 });

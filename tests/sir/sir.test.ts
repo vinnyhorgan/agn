@@ -295,6 +295,19 @@ describe("SIR v2 mixed-corpus validation and parsing", () => {
 
     expectErrorCode(await validateSirFile(input), "generic_visual_placeholder");
   });
+
+  it("rejects visual-review completion claims used instead of transcription", async () => {
+    const input = await createMixedCorpusArchive({
+      markdown: [
+        "<!-- slide: 1 -->\n# Introduzione\nContenuto didattico completo della prima pagina.",
+        "<!-- slide: 2 -->\n# Esercizio E-R\nContenuto non testuale trascritto e descritto dopo revisione visiva.",
+        "<!-- slide: 3 -->\n# Foto esame\nTrascrizione completa della domanda SQL fotografata.",
+        "<!-- slide: 4 -->\n# Organizzazione\nProgramma completo e bibliografia consigliata del corso.",
+      ].join("\n\n"),
+    });
+
+    expectErrorCode(await validateSirFile(input), "generic_visual_placeholder");
+  });
 });
 
 interface CreateSirArchiveOptions {

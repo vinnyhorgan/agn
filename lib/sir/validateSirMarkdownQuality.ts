@@ -6,6 +6,8 @@ const forbiddenPlaceholderPatterns = [
   /disposizione completa (?:è|e') conservata nell['’]immagine/iu,
   /(?:diagram|image|figura) (?:shown|mostrat[ao]|preservat[ao])(?:\s|$)/iu,
   /(?:see|vedi|consultare) (?:the |la |l['’])?(?:slide )?image/iu,
+  /contenuto (?:non )?testuale trascritt[oa] e descritt[oa] dopo (?:la )?revisione visiva/iu,
+  /(?:non-?textual )?content (?:was )?transcribed and described after visual review/iu,
 ];
 const explicitBlankPattern =
   /(?:pagina|slide) (?:intenzionalmente |veramente )?(?:vuota|bianca)|(?:intentionally |truly )?blank (?:page|slide)/iu;

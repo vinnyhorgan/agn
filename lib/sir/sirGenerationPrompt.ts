@@ -23,7 +23,7 @@ Supported source files:
 - Images: .jpg, .jpeg, .png, .webp
 - Markdown: .md, .markdown
 
-Ignore hidden files and directories, metadata such as .DS_Store, version-control directories such as .git, and unsupported files. Never silently omit a supported source. Preserve each supported file's relative path.
+Ignore hidden files and directories, metadata such as .DS_Store, version-control directories such as .git, and unsupported files. Never silently omit a supported source. Preserve each supported file's exact relative path from inside the uploaded archive. Do not replace it with a temporary extraction path or add environment-generated duplicate suffixes such as "(1)" or "(2)".
 
 Non-negotiable execution method:
 1. Inventory every supported source and page before writing sir.md.
@@ -91,7 +91,7 @@ sir.md requirements:
 - Do not invent obscured content. Mark a genuinely unreadable fragment as [Illeggibile] in Italian material or [Unreadable] otherwise.
 - Remove repetitive presentation chrome such as page numbers and course footers unless it carries source meaning.
 - Do not write vague substitutes such as "diagram shown" or "image of SQL" when the content is readable.
-- Forbidden output includes "Struttura visiva rilevata", "the layout is preserved in the slide image", image/vector object counts, or any equivalent placeholder. One occurrence makes the archive invalid.
+- Never replace visible content with a generic placeholder or a meta-claim that it was inspected, transcribed, preserved, or described. Statements such as "content transcribed after visual review", "diagram shown", or "the layout is preserved in the image" are not transcriptions. One such substitution makes the archive invalid.
 - Do not merely repeat the slide title. Every non-blank slide must contain substantive searchable content beyond its H1.
 - If a page mixes selectable text with raster or vector content, merge both into one faithful transcription. Never assume the selectable text is complete.
 - When code is visible as an embedded image, manually transcribe the complete code and verify identifiers, operators, punctuation, accents, and line structure against the image.
@@ -117,17 +117,13 @@ Completeness and validation before returning:
 6. Verify every page has meaningful Markdown unless it is truly blank; explicitly identify a truly blank page in its Markdown.
 7. Search sir.md for every forbidden generic placeholder above. The required count is zero.
 8. Detect slides whose body contains fewer than 24 substantive characters beyond the H1. Re-inspect and repair each one unless the page is explicitly and genuinely blank.
-9. Review every occurrence of [Illeggibile] or [Unreadable] against the high-resolution WebP and keep it only when the exact fragment is genuinely impossible to read.
-10. Verify Markdown-rendered WebPs have no clipped or overflowing text.
-11. Verify the archive root contains only manifest.json, sources.json, sir.md, and slides/.
-12. Reopen the finished ZIP and perform these checks again.
+9. Detect repeated generic body text across unrelated slides. Re-inspect every occurrence; repeated headings or genuinely repeated source pages are allowed, but repeated completion claims are not.
+10. For every prose-heavy rendered page, compare the Markdown against the page and verify that the actual prose is present rather than a summary of the review process.
+11. For every diagram, verify each readable label-to-node, label-to-edge, value-to-tuple, direction, and cardinality association—not merely the presence of the labels.
+12. Review every occurrence of [Illeggibile] or [Unreadable] against the high-resolution WebP and keep it only when the exact fragment is genuinely impossible to read.
+13. Verify every sources.json path exactly matches the corresponding supported file's relative path inside the uploaded archive.
+14. Verify Markdown-rendered WebPs have no clipped or overflowing text.
+15. Verify the archive root contains only manifest.json, sources.json, sir.md, and slides/.
+16. Reopen the finished ZIP and perform these checks again.
 
-Acceptance anchors for the reference database corpus, when these exact paths are present:
-- The corpus must contain 31 sources and 1158 slides after excluding .git.
-- Esercizi di SQL.pdf, local slide 5 visibly contains a solution using CREATE VIEW OLANDA. Its Markdown must include the complete CREATE VIEW and SELECT statements and the identifiers OLANDA, PALAZZETTO, INCONTRO, and NAZIONALE.
-- Esercizi_ER_esame_sol_rev2.pdf, local slide 3 is a handwritten ER solution. Its Markdown must transcribe and structurally describe the readable entities and relationships, including Panchina.
-- BD-AC1-1718_1_B.jpeg must describe the visible A/B/C/D/E schema, relationship names including RCD, RDD, RDE, and RBE, identifiers, and cardinalities.
-- organizzazione.md must be copied without text loss, and its rendered heading must fit inside the WebP.
-- Search the finished sir.md for OLANDA and Panchina. Both must be present. If either is absent, visual review was not completed and the archive must not be returned.
-
-Do not return a partial corpus, a draft, or a structurally correct archive with incomplete semantic text. Do not silently reduce image resolution until text becomes illegible. If you cannot visually review all 1158 reference-corpus slides within the available limits, explicitly say so instead of returning a .sir file. Otherwise return only the single generated .sir file.`;
+Do not return a partial corpus, a draft, or a structurally correct archive with incomplete semantic text. Do not silently reduce image resolution until text becomes illegible. If you cannot visually review every slide in the uploaded corpus within the available limits, explicitly say so instead of returning a .sir file. Otherwise return only the single generated .sir file.`;
