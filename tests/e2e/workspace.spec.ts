@@ -153,9 +153,13 @@ test("imports a mixed SIR v2 corpus and preserves source-local slides", async ({
   await expect(page.getByText("3 sources", { exact: true })).toBeVisible();
   await expect(page.getByText("Slide 1 / 2", { exact: true })).toBeVisible();
 
+  await page.getByRole("button", { name: "Source 2: exam" }).click();
+  await expect(page.getByRole("heading", { name: "exam" })).toBeVisible();
+  await expect(page.getByText("Slide 1 / 1", { exact: true })).toBeVisible();
+
   await page.getByPlaceholder("Search slides").fill("Domanda SQL");
   await page.getByRole("button", { name: /exam[\s\S]*Slide 1/ }).click();
-  await expect(page.getByText("exam", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "exam" })).toBeVisible();
   await expect(page.getByText("Slide 1 / 1", { exact: true })).toBeVisible();
 
   await page.reload();

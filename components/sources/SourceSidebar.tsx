@@ -131,40 +131,17 @@ export function SourceSidebar({
         {decks.length > 0 ? (
           <div className="flex flex-col gap-2">
             {decks.map((deck) => {
-              const rememberedSlideNumber =
-                lastViewedSlideByDeckId[deck.id] ??
-                deck.slides[0]?.slideNumber ??
-                1;
-              const isSelected = selectedSource?.deckId === deck.id;
-
               return (
                 <div
                   key={deck.id}
-                  className={cn(
-                    "group relative flex rounded-lg border transition-colors",
-                    isSelected
-                      ? "border-primary/25 bg-accent/70 shadow-sm"
-                      : "border-border bg-card/70 hover:border-primary/20 hover:bg-card",
-                  )}
+                  className="group overflow-hidden rounded-lg border border-border bg-card/70"
                 >
-                  {isSelected ? (
-                    <span className="absolute inset-y-2 left-0 w-0.5 rounded-r bg-primary" />
-                  ) : null}
-                  <button
-                    type="button"
-                    className="flex min-w-0 flex-1 items-start gap-2 px-3 py-2.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-                    onClick={() =>
-                      onSelectSource({
-                        deckId: deck.id,
-                        slideNumber: rememberedSlideNumber,
-                      })
-                    }
-                  >
+                  <div className="flex items-start gap-2 px-3 py-2.5">
                     <FileText
                       className="mt-0.5 size-4 shrink-0 text-muted-foreground"
                       aria-hidden="true"
                     />
-                    <span className="min-w-0">
+                    <span className="min-w-0 flex-1">
                       <span className="block text-xs font-medium text-primary">
                         {formatSourceRange(deck)}
                       </span>
@@ -172,28 +149,90 @@ export function SourceSidebar({
                         {deck.manifest.title}
                       </span>
                       <span className="mt-1 block text-xs text-muted-foreground">
-                        {deck.manifest.language} · {deck.sources.length} source{deck.sources.length === 1 ? "" : "s"} · {deck.manifest.slide_count}{" "}
+                        {deck.sources.length}{" "}
+                        source{deck.sources.length === 1 ? "" : "s"} ·{" "}
+                        {deck.manifest.slide_count}{" "}
                         slide{deck.manifest.slide_count === 1 ? "" : "s"}
                       </span>
                     </span>
-                  </button>
-                  <button
-                    type="button"
-                    className="m-1.5 flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-100 transition hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:opacity-0 sm:focus-visible:opacity-100 sm:group-hover:opacity-100"
-                    aria-label={`Remove ${deck.manifest.title}`}
-                    title="Remove source"
-                    onClick={() => {
-                      if (
-                        window.confirm(
-                          `Remove "${deck.manifest.title}" from this browser?`,
-                        )
-                      ) {
-                        void onRemoveDeck(deck.id);
-                      }
-                    }}
-                  >
-                    <Trash2 className="size-3.5" aria-hidden="true" />
-                  </button>
+                    <button
+                      type="button"
+                      className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-100 transition hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:opacity-0 sm:focus-visible:opacity-100 sm:group-hover:opacity-100"
+                      aria-label={`Remove ${deck.manifest.title}`}
+                      title="Remove archive"
+                      onClick={() => {
+                        if (
+                          window.confirm(
+                            `Remove "${deck.manifest.title}" from this browser?`,
+                          )
+                        ) {
+                          void onRemoveDeck(deck.id);
+                        }
+                      }}
+                    >
+                      <Trash2 className="size-3.5" aria-hidden="true" />
+                    </button>
+                  </div>
+                  <div className="border-t border-border p-1.5">
+                    {deck.sources.map((source) => {
+                      const rememberedSlideNumber =
+                        lastViewedSlideByDeckId[deck.id];
+                      const rememberedSlideBelongsToSource =
+                        rememberedSlideNumber !== undefined &&
+                        rememberedSlideNumber >= source.slideStart &&
+                        rememberedSlideNumber <
+                          source.slideStart + source.slideCount;
+                      const selectedSlide = deck.slides.find(
+                        (slide) =>
+                          slide.slideNumber === selectedSource?.slideNumber,
+                      );
+                      const isSelected =
+                        selectedSource?.deckId === deck.id &&
+                        selectedSlide?.sourceNumber === source.sourceNumber;
+                      const sourceLabel = formatSourceLabel(
+                        deck,
+                        source.sourceNumber,
+                      );
+
+                      return (
+                        <button
+                          key={source.sourceNumber}
+                          type="button"
+                          className={cn(
+                            "relative flex w-full min-w-0 items-start gap-2 rounded-md px-2.5 py-2 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+                            isSelected
+                              ? "bg-accent text-accent-foreground"
+                              : "hover:bg-muted/70",
+                          )}
+                          aria-label={`${sourceLabel}: ${source.title}`}
+                          onClick={() =>
+                            onSelectSource({
+                              deckId: deck.id,
+                              slideNumber: rememberedSlideBelongsToSource
+                                ? rememberedSlideNumber
+                                : source.slideStart,
+                            })
+                          }
+                        >
+                          {isSelected ? (
+                            <span className="absolute inset-y-2 left-0 w-0.5 rounded-r bg-primary" />
+                          ) : null}
+                          <span className="min-w-0">
+                            <span className="block text-xs font-medium text-primary">
+                              {sourceLabel}
+                            </span>
+                            <span className="line-clamp-2 text-sm leading-5 text-foreground">
+                              {source.title}
+                            </span>
+                            <span className="mt-0.5 block text-xs text-muted-foreground">
+                              {source.mediaType} · {source.slideCount}{" "}
+                              slide{source.slideCount === 1 ? "" : "s"}
+                            </span>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               );
             })}
@@ -230,6 +269,16 @@ function formatSourceRange(deck: BrowserSirDeck): string {
   const first = Number(deck.sourceLabel.match(/\d+/)?.[0]);
   return Number.isInteger(first)
     ? `Sources ${first}–${first + deck.sources.length - 1}`
+    : deck.sourceLabel;
+}
+
+function formatSourceLabel(
+  deck: BrowserSirDeck,
+  sourceNumber: number,
+): string {
+  const first = Number(deck.sourceLabel.match(/\d+/)?.[0]);
+  return Number.isInteger(first)
+    ? `Source ${first + sourceNumber - 1}`
     : deck.sourceLabel;
 }
 
