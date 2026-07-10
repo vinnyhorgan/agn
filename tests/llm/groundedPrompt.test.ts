@@ -67,6 +67,33 @@ describe("grounded prompt construction", () => {
     );
     expect(promptText).toContain("User question:\nHello");
   });
+
+  it("includes the complete library catalog separately from retrieved evidence", () => {
+    const messages = buildGroundedMessages({
+      question: "Can you see every uploaded source?",
+      sourceChunks: [],
+      runtimeModel: "test-model via DeepInfra",
+      librarySources: [
+        {
+          deckId: "database",
+          deckTitle: "Database corpus",
+          sourceLabel: "Source 29",
+          sourceTitle: "Final exam",
+          sourcePath: "exams/final.pdf",
+          sourceMediaType: "pdf",
+          slideCount: 4,
+        },
+      ],
+    });
+    const promptText = messages.at(-1)?.content ?? "";
+
+    expect(promptText).toContain("Runtime model: test-model via DeepInfra");
+    expect(promptText).toContain("Total uploaded sources: 1");
+    expect(promptText).toContain("Source 29: Final exam");
+    expect(promptText).toContain(
+      "No relevant uploaded source material was found for this message.",
+    );
+  });
 });
 
 function createChunk(): SourceChunk {

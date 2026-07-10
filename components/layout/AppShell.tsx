@@ -8,6 +8,7 @@ import { SourcePreview } from "@/components/sources/SourcePreview";
 import { SourceSidebar } from "@/components/sources/SourceSidebar";
 import type { BrowserSirDeck, SelectedSource } from "@/components/sources/types";
 import { Button } from "@/components/ui/button";
+import type { LibrarySource } from "@/lib/llm/types";
 import { chunkSlides } from "@/lib/search/chunkSlides";
 import { lexicalSearch } from "@/lib/search/lexicalSearch";
 import type { SearchResult } from "@/lib/search/types";
@@ -47,6 +48,21 @@ export function AppShell() {
           deckId: deck.id,
           sourceLabel: deck.sourceLabel,
         }),
+      ),
+    [decks],
+  );
+  const librarySources = useMemo<LibrarySource[]>(
+    () =>
+      decks.flatMap((deck) =>
+        deck.sources.map((source) => ({
+          deckId: deck.id,
+          deckTitle: deck.manifest.title,
+          sourceLabel: getSourceLabel(deck.sourceLabel, source.sourceNumber),
+          sourceTitle: source.title,
+          sourcePath: source.originalPath,
+          sourceMediaType: source.mediaType,
+          slideCount: source.slideCount,
+        })),
       ),
     [decks],
   );
@@ -376,6 +392,7 @@ export function AppShell() {
       <div className={cn("h-full min-h-0 overflow-hidden", mobilePane !== "chat" && "hidden", "lg:block")}>
         <ChatPanel
           sourceChunks={sourceChunks}
+          librarySources={librarySources}
           sourceCount={decks.reduce(
             (count, deck) => count + deck.sources.length,
             0,
@@ -395,6 +412,13 @@ export function AppShell() {
       <MobileNavigation activePane={mobilePane} onChange={setMobilePane} />
     </main>
   );
+}
+
+function getSourceLabel(firstSourceLabel: string, sourceNumber: number): string {
+  const firstSourceNumber = Number(firstSourceLabel.match(/\d+/)?.[0]);
+  return Number.isInteger(firstSourceNumber)
+    ? `Source ${firstSourceNumber + sourceNumber - 1}`
+    : firstSourceLabel;
 }
 
 async function createBrowserDeck(

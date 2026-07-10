@@ -2,6 +2,8 @@ import type { SourceChunk } from "@/lib/search/types";
 
 const qualifiedCitationPattern = /\[Source\s+(\d+)\s*,\s*Slide\s+(\d+)\]/gi;
 const legacyCitationPattern = /\[Slide\s+(\d+)\]/gi;
+const groupedCitationPattern =
+  /\[((?:Source\s+\d+\s*,\s*Slide\s+\d+)(?:\s*;\s*Source\s+\d+\s*,\s*Slide\s+\d+)+)\]/gi;
 
 export function repairModelCitations(
   content: string,
@@ -14,7 +16,13 @@ export function repairModelCitations(
     ),
   );
 
-  const repairedQualified = content.replace(
+  const normalizedGroups = content.replace(groupedCitationPattern, (_, group: string) =>
+    group
+      .split(/\s*;\s*/)
+      .map((citation) => `[${citation}]`)
+      .join(" "),
+  );
+  const repairedQualified = normalizedGroups.replace(
     qualifiedCitationPattern,
     (citation, sourceNumber: string, slideNumber: string) =>
       validQualified.has(`source ${Number(sourceNumber)},${Number(slideNumber)}`)

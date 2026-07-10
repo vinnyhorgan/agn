@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  getRetrievalMode,
   isOverviewQuery,
   retrieveSourceChunks,
 } from "../../lib/search/retrieveSources";
@@ -11,6 +12,29 @@ describe("source retrieval", () => {
     expect(isOverviewQuery("explain the slides")).toBe(true);
     expect(isOverviewQuery("spiega le slide")).toBe(true);
     expect(isOverviewQuery("What is a candidate key?")).toBe(false);
+  });
+
+  it("routes conversational and library-inventory questions without retrieval", () => {
+    expect(getRetrievalMode("hey!")).toBe("none");
+    expect(getRetrievalMode("who are you?")).toBe("none");
+    expect(getRetrievalMode("what can you do?")).toBe("none");
+    expect(getRetrievalMode("which LLM model are you?")).toBe("none");
+    expect(getRetrievalMode("tell me which llm model you are")).toBe("none");
+    expect(getRetrievalMode("can you see all sources from 1 to 29?")).toBe(
+      "catalog",
+    );
+    expect(
+      getRetrievalMode("tell me everything you see about the resources I uploaded"),
+    ).toBe("catalog");
+  });
+
+  it("does not attach arbitrary chunks to conversational or catalog questions", () => {
+    const chunks = [createChunk(1, 1, "model sources uploaded")];
+
+    expect(retrieveSourceChunks({ chunks, query: "who are you?" })).toEqual([]);
+    expect(
+      retrieveSourceChunks({ chunks, query: "which sources are uploaded?" }),
+    ).toEqual([]);
   });
 
   it("covers each slide before repeating chunks for overview requests", () => {

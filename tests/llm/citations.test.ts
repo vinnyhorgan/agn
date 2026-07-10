@@ -41,6 +41,15 @@ describe("citation repair", () => {
       ),
     ).toBe("Local [Source 7, Slide 3]. Global.");
   });
+
+  it("splits and validates citations grouped inside one bracket pair", () => {
+    expect(
+      repairModelCitations(
+        "Policies [Source 20, Slide 15; Source 20, Slide 13].",
+        [createChunk("Source 20", 15), createChunk("Source 20", 13)],
+      ),
+    ).toBe("Policies [Source 20, Slide 15] [Source 20, Slide 13].");
+  });
 });
 
 function createChunk(sourceLabel: string, slideNumber: number): SourceChunk {

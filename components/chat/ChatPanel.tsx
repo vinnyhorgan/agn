@@ -10,14 +10,18 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { repairModelCitations } from "@/lib/llm/citations";
 import { buildGroundedMessages } from "@/lib/llm/groundedPrompt";
-import { streamDeepInfraChatCompletionViaRoute } from "@/lib/llm/openAiCompatible";
-import type { DeepInfraSettings } from "@/lib/llm/types";
+import {
+  DEEPINFRA_MODEL,
+  streamDeepInfraChatCompletionViaRoute,
+} from "@/lib/llm/openAiCompatible";
+import type { DeepInfraSettings, LibrarySource } from "@/lib/llm/types";
 import { retrieveSourceChunks } from "@/lib/search/retrieveSources";
 import type { SourceChunk } from "@/lib/search/types";
 import { cn } from "@/lib/utils";
 
 interface ChatPanelProps {
   sourceChunks: SourceChunk[];
+  librarySources?: LibrarySource[];
   sourceCount?: number;
   onSelectSource?: (source: {
     deckId: string;
@@ -54,6 +58,7 @@ const missingApiKeyMessage = "Add a valid DeepInfra API key before chatting.";
 
 export function ChatPanel({
   sourceChunks,
+  librarySources = [],
   sourceCount,
   onSelectSource,
 }: ChatPanelProps) {
@@ -132,6 +137,8 @@ export function ChatPanel({
       const messages = buildGroundedMessages({
         question: trimmedQuestion,
         sourceChunks: sources,
+        librarySources,
+        runtimeModel: `${DEEPINFRA_MODEL} via DeepInfra`,
         history: currentTurns
           .filter((turn) => turn.answer && turn.status !== "error")
           .slice(-historyLimit)
@@ -196,7 +203,9 @@ export function ChatPanel({
   }
 
   async function copyConversation() {
-    await navigator.clipboard.writeText(formatChatDiagnosticExport(turns));
+    await navigator.clipboard.writeText(
+      formatChatDiagnosticExport(turns, librarySources),
+    );
     setDidCopyChat(true);
     window.setTimeout(() => setDidCopyChat(false), 2_000);
   }
@@ -581,12 +590,24 @@ function isStoredChatTurn(value: unknown): value is StoredChatTurn {
   );
 }
 
-function formatChatDiagnosticExport(turns: ChatTurn[]): string {
+function formatChatDiagnosticExport(
+  turns: ChatTurn[],
+  librarySources: LibrarySource[],
+): string {
   const lines = [
     "# AGN chat diagnostic export",
     "",
     `Exported: ${new Date().toISOString()}`,
     `Turns: ${turns.length}`,
+    `Runtime model: ${DEEPINFRA_MODEL} via DeepInfra`,
+    "",
+    `## Complete library catalog (${librarySources.length} sources)`,
+    ...(librarySources.length > 0
+      ? librarySources.map(
+          (source) =>
+            `- ${source.sourceLabel}: ${source.sourceTitle} | ${source.sourceMediaType} | ${source.slideCount} slide${source.slideCount === 1 ? "" : "s"} | ${source.sourcePath}`,
+        )
+      : ["", "(none)"]),
   ];
 
   turns.forEach((turn, turnIndex) => {

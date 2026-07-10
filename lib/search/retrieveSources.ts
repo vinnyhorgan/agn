@@ -13,6 +13,23 @@ const overviewPatterns = [
   /\b(?:slide|presentazione|dispensa|fonte)\b.*\b(?:spiega|riassumi|panoramica|illustra)\b/i,
 ];
 
+const conversationalPatterns = [
+  /^(?:hey|hi|hello|ciao|salve|buongiorno|buonasera)[!?.\s]*$/i,
+  /\b(?:who are you|what are you|chi sei)\b/i,
+  /\b(?:what can you do|cosa (?:puoi|sai) fare)\b/i,
+  /\b(?:which|what) (?:llm |language )?model (?:are you|you are|do you use)\b/i,
+  /\b(?:system prompt|prompt di sistema)\b/i,
+];
+
+const catalogPatterns = [
+  /\b(?:which|what|list|show|see|uploaded|available|all|how many)\b.*\b(?:sources?|resources?|decks?|files?|library)\b/i,
+  /\b(?:sources?|resources?|decks?|files?|library)\b.*\b(?:which|what|list|show|see|uploaded|available|all|how many)\b/i,
+  /\b(?:quali|elenca|mostra|vedi|caricat[ei]|tutt[ei]|quante?)\b.*\b(?:fonti|risorse|dispense|file|libreria)\b/i,
+  /\b(?:fonti|risorse|dispense|file|libreria)\b.*\b(?:quali|elenca|mostra|vedi|caricat[ei]|tutt[ei]|quante?)\b/i,
+];
+
+export type RetrievalMode = "none" | "catalog" | "overview" | "focused";
+
 export function retrieveSourceChunks({
   chunks,
   query,
@@ -26,7 +43,13 @@ export function retrieveSourceChunks({
     return [];
   }
 
-  if (isOverviewQuery(query)) {
+  const mode = getRetrievalMode(query);
+
+  if (mode === "none" || mode === "catalog") {
+    return [];
+  }
+
+  if (mode === "overview") {
     return selectOverviewChunks(chunks);
   }
 
@@ -45,6 +68,20 @@ export function retrieveSourceChunks({
 export function isOverviewQuery(query: string): boolean {
   const normalized = query.normalize("NFKC").trim();
   return overviewPatterns.some((pattern) => pattern.test(normalized));
+}
+
+export function getRetrievalMode(query: string): RetrievalMode {
+  const normalized = query.normalize("NFKC").trim();
+
+  if (conversationalPatterns.some((pattern) => pattern.test(normalized))) {
+    return "none";
+  }
+
+  if (catalogPatterns.some((pattern) => pattern.test(normalized))) {
+    return "catalog";
+  }
+
+  return isOverviewQuery(normalized) ? "overview" : "focused";
 }
 
 function selectOverviewChunks(chunks: SourceChunk[]): SourceChunk[] {

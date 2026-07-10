@@ -22,6 +22,16 @@ export interface ConversationTurn {
   answer: string;
 }
 
+export interface LibrarySource {
+  deckId: string;
+  deckTitle: string;
+  sourceLabel: string;
+  sourceTitle: string;
+  sourcePath: string;
+  sourceMediaType: SourceChunk["sourceMediaType"];
+  slideCount: number;
+}
+
 export interface ChatCompletionRequest {
   model: string;
   messages: LlmMessage[];
