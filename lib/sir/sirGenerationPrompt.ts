@@ -33,7 +33,7 @@ Non-negotiable execution method:
 5. Do not mark a slide complete until every applicable flag is true.
 6. Assemble sir.md only from completed ledger rows, then run semantic and structural audits.
 
-This is not a PDF text-extraction task. You must actually inspect every rendered page visually. PDF object metadata such as image counts, drawing counts, vector-group counts, bounding boxes, or statements that content remains visible in the image are not semantic transcription. OCR is only a draft and must be corrected against the page. Do not use a generic template for visual content.
+This is not a PDF text-extraction task. You must actually inspect every rendered page visually. PDF object metadata such as image counts, drawing counts, vector-group counts, bounding boxes, or statements that content remains visible in the image are not semantic transcription. OCR and native extraction are scratch data only: correct them against the page, reorganize them into faithful Markdown, and remove the raw draft from the final section. Do not leave duplicated disconnected-label dumps, symbol-heavy OCR garbage, or words split by extraction line breaks before a cleaner description. Do not use a generic template for visual content.
 
 SIR v2 archive structure:
 - A .sir file is a ZIP archive.
@@ -122,8 +122,10 @@ Completeness and validation before returning:
 11. For every diagram, verify each readable label-to-node, label-to-edge, value-to-tuple, direction, and cardinality association—not merely the presence of the labels.
 12. Review every occurrence of [Illeggibile] or [Unreadable] against the high-resolution WebP and keep it only when the exact fragment is genuinely impossible to read.
 13. Verify every sources.json path exactly matches the corresponding supported file's relative path inside the uploaded archive.
-14. Verify Markdown-rendered WebPs have no clipped or overflowing text.
-15. Verify the archive root contains only manifest.json, sources.json, sir.md, and slides/.
-16. Reopen the finished ZIP and perform these checks again.
+14. Independently natural-sort the inventoried relative paths again and verify that the resulting sequence exactly equals the sources.json path sequence; never use upload order, extraction order, or temporary filenames as source order.
+15. Scan final Markdown for OCR residue: symbol-heavy nonsense tokens, extraction-broken words, and raw disconnected label lists duplicated by a structured description. Re-inspect and clean every hit without deleting real formulas, code, identifiers, or labels.
+16. Verify Markdown-rendered WebPs have no clipped or overflowing text.
+17. Verify the archive root contains only manifest.json, sources.json, sir.md, and slides/.
+18. Reopen the finished ZIP and perform these checks again.
 
 Do not return a partial corpus, a draft, or a structurally correct archive with incomplete semantic text. Do not silently reduce image resolution until text becomes illegible. If you cannot visually review every slide in the uploaded corpus within the available limits, explicitly say so instead of returning a .sir file. Otherwise return only the single generated .sir file.`;

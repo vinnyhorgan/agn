@@ -20,6 +20,7 @@ export function validateSirMarkdownQuality(
   const placeholderSlides: number[] = [];
   const missingHeadingSlides: number[] = [];
   const sparseSlides: number[] = [];
+  const suspectedOcrArtifactSlides: number[] = [];
 
   for (const match of sections) {
     const slideNumber = Number(match[1]);
@@ -31,6 +32,10 @@ export function validateSirMarkdownQuality(
 
     if (!/^#\s+\S.+$/mu.test(content)) {
       missingHeadingSlides.push(slideNumber);
+    }
+
+    if (containsSuspectedOcrArtifact(content)) {
+      suspectedOcrArtifactSlides.push(slideNumber);
     }
 
     const meaningfulText = content
@@ -64,7 +69,42 @@ export function validateSirMarkdownQuality(
       "insufficient_slide_transcription",
       `Every non-blank SIR v2 slide needs at least ${minimumMeaningfulCharacters} characters of substantive content beyond its heading`,
     ),
+    createAggregateError(
+      suspectedOcrArtifactSlides,
+      "suspected_ocr_artifact",
+      "SIR v2 Markdown must not contain symbol-heavy OCR residue outside code blocks",
+    ),
   ].filter((error): error is SirValidationError => error !== undefined);
+}
+
+function containsSuspectedOcrArtifact(content: string): boolean {
+  const withoutCodeBlocks = content.replace(/```[\s\S]*?```/gu, "");
+
+  return withoutCodeBlocks.split(/\r?\n/gu).some((line) => {
+    const candidate = line.trim();
+
+    if (
+      candidate.length < 4 ||
+      candidate.length > 20 ||
+      /\s/u.test(candidate) ||
+      /^#{1,6}(?:\s|$)/u.test(candidate) ||
+      /^<!--/u.test(candidate) ||
+      /^\([\dXx]+,[Nn\d.]+\)[.,;:]?$/u.test(candidate)
+    ) {
+      return false;
+    }
+
+    const alphaNumericCount = Array.from(candidate).filter((character) =>
+      /[\p{L}\p{N}]/u.test(character),
+    ).length;
+    const symbolCount = candidate.length - alphaNumericCount;
+
+    return (
+      alphaNumericCount >= 1 &&
+      alphaNumericCount <= 5 &&
+      symbolCount / candidate.length >= 0.6
+    );
+  });
 }
 
 function createAggregateError(

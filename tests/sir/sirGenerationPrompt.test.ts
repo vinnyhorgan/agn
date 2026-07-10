@@ -26,6 +26,8 @@ describe("SIR generation prompt", () => {
     expect(sirGenerationPrompt).toContain("Never silently omit a supported source");
     expect(sirGenerationPrompt).toContain("content transcribed after visual review");
     expect(sirGenerationPrompt).toContain("exact relative path");
+    expect(sirGenerationPrompt).toContain("OCR and native extraction are scratch data only");
+    expect(sirGenerationPrompt).toContain("exactly equals the sources.json path sequence");
     expect(sirGenerationPrompt).toContain("internal ledger");
     expect(sirGenerationPrompt).toContain("actually inspect every rendered page visually");
   });

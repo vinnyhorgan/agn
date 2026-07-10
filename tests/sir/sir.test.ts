@@ -308,6 +308,19 @@ describe("SIR v2 mixed-corpus validation and parsing", () => {
 
     expectErrorCode(await validateSirFile(input), "generic_visual_placeholder");
   });
+
+  it("rejects symbol-heavy OCR residue outside code blocks", async () => {
+    const input = await createMixedCorpusArchive({
+      markdown: [
+        "<!-- slide: 1 -->\n# Introduzione\nContenuto didattico completo della prima pagina.",
+        "<!-- slide: 2 -->\n# Tabella\nTrascrizione strutturata della tabella.\n\nA###\n\n7.UV:;.",
+        "<!-- slide: 3 -->\n# Foto esame\nTrascrizione completa della domanda SQL fotografata.",
+        "<!-- slide: 4 -->\n# Organizzazione\nProgramma completo e bibliografia consigliata del corso.",
+      ].join("\n\n"),
+    });
+
+    expectErrorCode(await validateSirFile(input), "suspected_ocr_artifact");
+  });
 });
 
 interface CreateSirArchiveOptions {
