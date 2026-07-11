@@ -83,14 +83,14 @@ sir.md requirements:
 - Global markers must be consecutive from 1 through manifest.slide_count.
 - Global slide N maps to slides/NNNN.webp.
 - Begin each section with a useful Markdown H1 when a title is visible or can be conservatively derived.
-- Transcribe all readable prose, labels, lists, tables, formulas, relational schemas, constraints, and annotations.
-- Preserve SQL, relational algebra, and other code-like material in fenced code blocks without changing its meaning.
-- Describe visual structure that plain text extraction loses. For ER diagrams, state entities, attributes, identifiers, relationships, cardinalities, participation constraints, and inheritance visible on the page. For tables and schemas, preserve rows, columns, keys, arrows, and connections. For handwritten solutions, transcribe readable writing and explain the visible structure conservatively.
+- Transcribe all readable prose, labels, lists, tables, formulas, formal schemas, constraints, code, and annotations.
+- Preserve source code, mathematical derivations, symbolic notation, and other code-like material in appropriate fenced code blocks without changing its meaning.
+- Describe visual structure that plain text extraction loses. For diagrams—including ER diagrams, scientific process diagrams, concept maps, timelines, and circuit or system diagrams—name every readable component and state the meaning and direction of connections, including labels, multiplicities, or constraints when present. For tables and schemas, preserve rows, columns, keys, arrows, and connections. For handwritten solutions, transcribe readable writing and explain the visible structure conservatively.
 - Use both the embedded text layer and visual inspection for every PDF page. A non-empty PDF text layer does not prove that code, diagrams, or annotations were extracted.
 - For scans and photographs, correct orientation for reading and perform OCR plus visual inspection.
 - Do not invent obscured content. Mark a genuinely unreadable fragment as [Illeggibile] in Italian material or [Unreadable] otherwise.
 - Remove repetitive presentation chrome such as page numbers and course footers unless it carries source meaning.
-- Do not write vague substitutes such as "diagram shown" or "image of SQL" when the content is readable.
+- Do not write vague substitutes such as "diagram shown" or "image of code" when the content is readable.
 - Never replace visible content with a generic placeholder or a meta-claim that it was inspected, transcribed, preserved, or described. Statements such as "content transcribed after visual review", "diagram shown", or "the layout is preserved in the image" are not transcriptions. One such substitution makes the archive invalid.
 - Do not merely repeat the slide title. Every non-blank slide must contain substantive searchable content beyond its H1.
 - If a page mixes selectable text with raster or vector content, merge both into one faithful transcription. Never assume the selectable text is complete.

@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, BookOpen, Check, Copy, Send, Square, Trash2 } from "lucide-react";
+import { AlertCircle, BookOpen, Check, Copy, Send, Square, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { ChatMessage } from "@/components/chat/ChatMessage";
@@ -28,6 +28,7 @@ import {
 import type { SourceChunk } from "@/lib/search/types";
 import { chunksForChapter } from "@/lib/study/chapterPlanner";
 import type { StudyChapter } from "@/lib/study/types";
+import { inferStudyLanguage } from "@/lib/study/language";
 import { cn } from "@/lib/utils";
 import { repairWebCitations } from "@/lib/web/citations";
 import {
@@ -157,9 +158,12 @@ export function ChatPanel({
     const retrievalCorpus = activeChapter
       ? chunksForChapter(sourceChunks, activeChapter)
       : sourceChunks;
+    const retrievalQuery = activeChapter
+      ? `${activeChapter.title}\n${activeChapter.goals.join(" ")}\n${trimmedQuestion}`
+      : trimmedQuestion;
     const retrieval = retrieveSourceChunksWithDiagnostics({
       chunks: retrievalCorpus,
-      query: trimmedQuestion,
+      query: retrievalQuery,
       previousSources: currentTurns.at(-1)?.sources,
     });
     const retrievalMode = retrieval.mode;
@@ -254,6 +258,9 @@ export function ChatPanel({
         runtimeModel: `${DEEPINFRA_MODEL} via DeepInfra`,
         webResults,
         history: selectedHistory,
+        responseLanguage: activeChapter
+          ? inferStudyLanguage(chunksForChapter(sourceChunks, activeChapter))
+          : undefined,
       });
       const promptCharacters = messages.reduce(
         (total, message) => total + message.content.length,
@@ -420,6 +427,16 @@ export function ChatPanel({
           >
             <BookOpen aria-hidden="true" />
           </Button>
+          {activeChapter ? <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            title={`Leave chapter focus: ${activeChapter.title}`}
+            aria-label="Leave chapter focus"
+            onClick={() => setActiveChapter(undefined)}
+          >
+            <X aria-hidden="true" />
+          </Button> : null}
           {turns.length > 0 ? (
             <>
               <Button
@@ -531,7 +548,7 @@ export function ChatPanel({
         onStartTest={(chapter) => {
           setActiveChapter(chapter);
           setStudyOpen(false);
-          const language = sourceChunks.some((chunk) => chunk.sourceLanguage === "it") ? "Italian" : "the language of the uploaded material";
+          const language = inferStudyLanguage(chunksForChapter(sourceChunks, chapter));
           setQuestion(`Conduct an adaptive oral exam on “${chapter.title}”. Ask exactly one substantive question now, then wait for my answer. Evaluate each answer precisely against the uploaded course sources, explain the first error or omission with citations, and adapt the next question to my weaknesses. Do not reveal answers to questions you have not asked. Conduct the entire exam in ${language}. Chapter goals: ${chapter.goals.join("; ")}.`);
           window.setTimeout(() => chatFormRef.current?.requestSubmit(), 0);
         }}

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { parseStudyContent, repairIncompleteArtifactFences, validateStudyArtifact } from "../../lib/study/artifacts";
+import { finalizeStudyPage, splitStudyPageEvidence } from "../../lib/study/studyPage";
 import {
   buildCorpusOutline,
   chunksForChapter,
@@ -124,6 +125,26 @@ describe("study artifacts", () => {
     const repaired = repairIncompleteArtifactFences("```json\n{broken\n## Later section");
     expect(repaired).not.toContain("```");
     expect(repaired).toContain("## Later section");
+  });
+});
+
+describe("study page completion", () => {
+  it("splits large evidence into at most two ordered packets", () => {
+    const chunks = Array.from({ length: 6 }, (_, index) => ({ ...createChunk(index + 1), text: "x".repeat(3_000) }));
+    const parts = splitStudyPageEvidence(chunks);
+    expect(parts).toHaveLength(2);
+    expect(parts.flat().map((chunk) => chunk.id)).toEqual(chunks.map((chunk) => chunk.id));
+  });
+  it("rejects incomplete and ungrounded pages", () => {
+    expect(() => finalizeStudyPage("Short output", true)).toThrow("incomplete");
+    expect(() => finalizeStudyPage("A".repeat(900), true)).toThrow("without valid source citations");
+  });
+
+  it("drops invalid optional artifacts while preserving a grounded page", () => {
+    const page = `${"Grounded explanation ".repeat(50)}[Source 1, Slide 2]\n\n\`\`\`agn-artifact\n{"artifact":"er-diagram","version":1,"title":"Broken","entities":false}\n\`\`\``;
+    const finalized = finalizeStudyPage(page, true);
+    expect(finalized).not.toContain("Broken");
+    expect(finalized).toContain("[Source 1, Slide 2]");
   });
 });
 

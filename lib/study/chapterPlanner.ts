@@ -368,7 +368,7 @@ export function buildCompactChapterOrganizerMessages(
       role: "system" as const,
       content: `Organize numbered candidate units into an exam-study curriculum. Return JSON only.
 Output exactly: {"title":"...","chapters":[{"title":"...","units":[1,2]}]}.
-Use each examinable unit at most once. Omit units that contain only schedules, teachers, textbooks, communications, or exam logistics. Merge exercises with their conceptual topic. Order prerequisites and foundational models before transformations, query languages, and exercises that depend on them. Use concise, specific chapter titles in ${candidate.language}. Do not output descriptions, goals, scopes, or any other fields.
+Use each examinable unit at most once. Omit units that contain only schedules, teachers, textbooks, communications, or exam logistics. Merge exercises with their conceptual topic. Order prerequisites before dependents: definitions before mechanisms, foundational models or frameworks before chapters that derive, transform, optimize, query, or apply them, and concepts before their exercises. Before returning, audit every adjacent pair and fix any dependency inversion. Use concise, specific chapter titles in ${candidate.language}. Do not output descriptions, goals, scopes, or any other fields.
 For a large course with at least 10 candidate units, produce 10-16 focused chapters; do not collapse distinct database topics into broad survey chapters.`,
     },
     { role: "user" as const, content: units },

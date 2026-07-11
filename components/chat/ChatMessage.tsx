@@ -86,8 +86,8 @@ function AssistantContent({
             h1: ({ children }) => <h1 className="mb-2 mt-1 text-base font-semibold text-foreground">{renderMarkdownChildren(children, validCitations, onCitationClick)}</h1>,
             h2: ({ children }) => <h2 className="mb-2 mt-3 text-sm font-semibold text-foreground">{renderMarkdownChildren(children, validCitations, onCitationClick)}</h2>,
             h3: ({ children }) => <h3 className="mb-2 mt-3 text-sm font-semibold text-foreground">{renderMarkdownChildren(children, validCitations, onCitationClick)}</h3>,
-            code: ({ children, className }) => className?.includes("language-sql")
-              ? <SqlCode>{String(children).replace(/\n$/, "")}</SqlCode>
+            code: ({ children, className }) => className?.startsWith("language-")
+              ? <HighlightedCode language={className.slice("language-".length)}>{String(children).replace(/\n$/, "")}</HighlightedCode>
               : <code className="rounded bg-accent px-1 py-0.5 font-mono text-[0.85em] text-accent-foreground">{children}</code>,
             pre: ({ children }) => <pre className="mb-3 overflow-x-auto rounded-xl border border-border bg-muted/65 p-3 text-sm leading-6 [&_code]:bg-transparent [&_code]:p-0 [&_code]:text-foreground">{children}</pre>,
             blockquote: ({ children }) => <blockquote className="mb-3 border-l-2 border-primary pl-3 text-muted-foreground">{children}</blockquote>,
@@ -103,18 +103,39 @@ function AssistantContent({
   });
 }
 
-const sqlTokenPattern = /(--[^\n]*|'(?:''|[^'])*'|\b(?:SELECT|FROM|WHERE|JOIN|INNER|LEFT|RIGHT|FULL|OUTER|ON|AS|AND|OR|NOT|NULL|IS|IN|EXISTS|GROUP|BY|ORDER|HAVING|LIMIT|OFFSET|UNION|ALL|DISTINCT|INSERT|INTO|VALUES|UPDATE|SET|DELETE|CREATE|ALTER|DROP|TABLE|VIEW|PRIMARY|FOREIGN|KEY|REFERENCES|CONSTRAINT|INTEGER|INT|VARCHAR|CHAR|DATE|COUNT|SUM|AVG|MIN|MAX|CASE|WHEN|THEN|ELSE|END)\b|\b\d+(?:\.\d+)?\b)/gi;
+const codeTokenPattern = /(\/\*[\s\S]*?\*\/|--[^\n]*|\/\/[^\n]*|#[^\n]*|'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"|\b\d+(?:\.\d+)?\b|\b[A-Za-z_]\w*\b)/g;
+const languageKeywords: Record<string, Set<string>> = {
+  sql: words("select from where join inner left right full outer on as and or not null is in exists group by order having limit offset union all distinct insert into values update set delete create alter drop table view primary foreign key references constraint integer int varchar char date count sum avg min max case when then else end"),
+  python: words("and as assert async await break class continue def del elif else except false finally for from global if import in is lambda none nonlocal not or pass raise return true try while with yield"),
+  javascript: words("async await break case catch class const continue debugger default delete do else export extends false finally for function if import in instanceof let new null return static super switch this throw true try typeof undefined var void while with yield"),
+  typescript: words("abstract any as async await boolean break case catch class const constructor continue declare default delete do else enum export extends false finally for from function if implements import in infer instanceof interface keyof let namespace never new null number object private protected public readonly return satisfies static string super switch symbol this throw true try type typeof undefined unknown var void while with yield"),
+  java: words("abstract assert boolean break byte case catch char class const continue default do double else enum extends final finally float for if implements import instanceof int interface long native new null package private protected public return short static strictfp super switch synchronized this throw throws transient true try void volatile while"),
+  c: words("auto break case char const continue default do double else enum extern float for goto if inline int long register restrict return short signed sizeof static struct switch typedef union unsigned void volatile while"),
+  cpp: words("alignas alignof and asm auto bool break case catch char class const constexpr continue default delete do double else enum explicit export extern false float for friend if inline int long mutable namespace new noexcept nullptr operator private protected public register reinterpret_cast return short signed sizeof static struct switch template this throw true try typedef typename union unsigned using virtual void volatile while"),
+};
+languageKeywords.js = languageKeywords.javascript!;
+languageKeywords.jsx = languageKeywords.javascript!;
+languageKeywords.ts = languageKeywords.typescript!;
+languageKeywords.tsx = languageKeywords.typescript!;
+languageKeywords.py = languageKeywords.python!;
+languageKeywords.cc = languageKeywords.cpp!;
 
-function SqlCode({ children }: { children: string }) {
-  return <code className="font-mono text-[0.85em]">{children.split(sqlTokenPattern).map((token, index) => {
+function words(value: string): Set<string> {
+  return new Set(value.split(" "));
+}
+
+function HighlightedCode({ children, language }: { children: string; language: string }) {
+  const keywords = languageKeywords[language.toLocaleLowerCase()] ?? new Set<string>();
+  return <code className="font-mono text-[0.85em]">{children.split(codeTokenPattern).map((token, index) => {
     if (!token) return null;
-    const className = token.startsWith("--")
+    const normalized = token.toLocaleLowerCase();
+    const className = /^(?:--|\/\/|#|\/\*)/.test(token)
       ? "text-muted-foreground italic"
-      : token.startsWith("'")
+      : /^(?:'|")/.test(token)
         ? "text-amber-700 dark:text-amber-300"
         : /^\d/.test(token)
           ? "text-sky-700 dark:text-sky-300"
-          : /^(SELECT|FROM|WHERE|JOIN|INNER|LEFT|RIGHT|FULL|OUTER|ON|AS|AND|OR|NOT|NULL|IS|IN|EXISTS|GROUP|BY|ORDER|HAVING|LIMIT|OFFSET|UNION|ALL|DISTINCT|INSERT|INTO|VALUES|UPDATE|SET|DELETE|CREATE|ALTER|DROP|TABLE|VIEW|PRIMARY|FOREIGN|KEY|REFERENCES|CONSTRAINT|INTEGER|INT|VARCHAR|CHAR|DATE|COUNT|SUM|AVG|MIN|MAX|CASE|WHEN|THEN|ELSE|END)$/i.test(token)
+          : keywords.has(normalized)
             ? "font-semibold text-primary"
             : undefined;
     return <span key={index} className={className}>{token}</span>;

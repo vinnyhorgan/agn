@@ -30,6 +30,7 @@ export function buildGroundedMessages({
   runtimeModel,
   webResults = [],
   history = [],
+  responseLanguage,
 }: {
   question: string;
   sourceChunks: SourceChunk[];
@@ -37,6 +38,7 @@ export function buildGroundedMessages({
   runtimeModel?: string;
   webResults?: WebSearchResult[];
   history?: ConversationTurn[];
+  responseLanguage?: string;
 }): LlmMessage[] {
   const dynamicContext = [
     `Runtime model: ${runtimeModel ?? "Not specified"}`,
@@ -62,7 +64,7 @@ export function buildGroundedMessages({
   return [
     {
       role: "system",
-      content: `${groundedSystemInstruction}\n\n${dynamicContext}`,
+      content: `${groundedSystemInstruction}${responseLanguage ? `\nThis is an active learning session. Answer every turn in ${responseLanguage}, even if the student's reply uses another language.` : ""}\n\n${dynamicContext}`,
     },
     ...history.flatMap<LlmMessage>((turn) => [
       { role: "user", content: turn.question },

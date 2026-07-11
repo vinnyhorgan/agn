@@ -64,6 +64,12 @@ describe("chat interactions", () => {
     expect(screen.getByText("Execute")).toBeTruthy();
   });
 
+  it("syntax-highlights common non-SQL languages", () => {
+    render(<ChatMessage role="assistant" content={'```python\ndef area(radius):\n    return 3.14 * radius\n```'} />);
+    expect(screen.getByText("def").className).toContain("text-primary");
+    expect(screen.getByText("return").className).toContain("text-primary");
+  });
+
   it("offers and persists an explicit basic outline without an API request", async () => {
     const user = userEvent.setup();
     const fetchMock = vi.fn();

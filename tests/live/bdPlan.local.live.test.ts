@@ -17,7 +17,9 @@ describe("local Basi di Dati curriculum", () => {
     ));
 
     expect(plan.chapters.length).toBeGreaterThanOrEqual(10);
-    expect(plan.chapters.length).toBeLessThanOrEqual(24);
+    // These are narrow deterministic candidate units; the AI organizer merges
+    // them into the smaller user-facing curriculum.
+    expect(plan.chapters.length).toBeLessThanOrEqual(48);
     expect(plannedSlides).toEqual(uniqueSlides);
     expect(plan.chapters.every((chapter) => chunksForChapter(chunks, chapter).length > 0)).toBe(true);
 

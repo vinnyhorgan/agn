@@ -18,8 +18,9 @@ import {
   parseChapterPlan,
   parseCompactChapterPlan,
 } from "@/lib/study/chapterPlanner";
-import { buildStudyPageMessages, selectStudyPageEvidence } from "@/lib/study/studyPage";
+import { buildStudyPageMessages, finalizeStudyPage, selectStudyPageEvidence, splitStudyPageEvidence } from "@/lib/study/studyPage";
 import type { StudyChapter, StudyChapterPlan, StudyPage } from "@/lib/study/types";
+import { inferStudyLanguage } from "@/lib/study/language";
 
 export function StudyWorkspace({
   open,
@@ -75,7 +76,7 @@ export function StudyWorkspace({
 
   async function createPlan() {
     if (!apiKey.trim()) return setError("Add a DeepInfra API key to organize this corpus into meaningful study chapters.");
-    const candidatePlan = createDeterministicChapterPlan(chunks, inferLanguage(chunks));
+    const candidatePlan = createDeterministicChapterPlan(chunks, inferStudyLanguage(chunks));
     setPlan(candidatePlan); setPages({}); setSelectedId(candidatePlan.chapters[0]?.id);
     persist(storageKey, candidatePlan, {});
     setBusy("plan"); setError(undefined);
@@ -102,7 +103,7 @@ export function StudyWorkspace({
   }
 
   function createBasicPlan() {
-    const nextPlan = createDeterministicChapterPlan(chunks, inferLanguage(chunks));
+    const nextPlan = createDeterministicChapterPlan(chunks, inferStudyLanguage(chunks));
     setPlan(nextPlan); setPages({}); setSelectedId(nextPlan.chapters[0]?.id);
     persist(storageKey, nextPlan, {});
   }
@@ -117,7 +118,7 @@ export function StudyWorkspace({
         settings: { apiKey },
         messages: plan
           ? buildCompactChapterOrganizerMessages(plan, chunks)
-          : buildChapterPlannerMessages(chunks, inferLanguage(chunks)),
+          : buildChapterPlannerMessages(chunks, inferStudyLanguage(chunks)),
         onDelta() {},
         reasoningEffort: "low",
         maxTokens: 1_500,
@@ -137,7 +138,7 @@ export function StudyWorkspace({
 
   async function parseOrRepairPlan(content: string, signal?: AbortSignal): Promise<StudyChapterPlan> {
     try {
-      return parseChapterPlan(content, chunks, inferLanguage(chunks));
+      return parseChapterPlan(content, chunks, inferStudyLanguage(chunks));
     } catch {
       setError("The model returned malformed curriculum data. Repairing it now…");
       const repaired = await streamDeepInfraChatCompletionViaRoute({
@@ -152,7 +153,7 @@ export function StudyWorkspace({
       });
       setError(undefined);
       try {
-        return parseChapterPlan(repaired.content, chunks, inferLanguage(chunks));
+        return parseChapterPlan(repaired.content, chunks, inferStudyLanguage(chunks));
       } catch {
         throw new Error("The provider returned invalid curriculum data twice. Your existing study data was not changed; please retry.");
       }
@@ -183,19 +184,36 @@ export function StudyWorkspace({
     let streamed = "";
     try {
       const controller = new AbortController();
-      const response = await streamDeepInfraChatCompletionViaRoute({
-        settings: { apiKey },
-        messages: buildStudyPageMessages({ chapter, chunks: chapterChunks, language: inferLanguage(chapterChunks) }),
-        onDelta(delta) { streamed += delta; setDraftPage(streamed); },
-        reasoningEffort: "low",
-        maxTokens: 8_000,
-        signal: controller.signal,
-      });
+      const evidenceParts = splitStudyPageEvidence(evidence);
+      const drafts = evidenceParts.map(() => "");
+      const responses = await Promise.all(evidenceParts.map((partChunks, index) =>
+        streamDeepInfraChatCompletionViaRoute({
+          settings: { apiKey },
+          messages: buildStudyPageMessages({
+            chapter,
+            chunks: partChunks,
+            language: inferStudyLanguage(chapterChunks),
+            part: { index, total: evidenceParts.length },
+          }),
+          onDelta(delta) {
+            drafts[index] += delta;
+            streamed = drafts.join("\n\n");
+            setDraftPage(streamed);
+          },
+          reasoningEffort: "low",
+          maxTokens: evidenceParts.length > 1 ? 2_600 : 3_800,
+          signal: controller.signal,
+        })
+      ));
+      const completed = responses.map((response, index) => response.content || drafts[index]).join("\n\n");
       const page: StudyPage = {
         version: 1,
         chapterId: chapter.id,
         generatedAt: Date.now(),
-        markdown: repairModelCitations(response.content || streamed, evidence),
+        markdown: finalizeStudyPage(
+          repairModelCitations(completed, evidence),
+          evidence.length > 0,
+        ),
         sourceChunkIds: evidence.map((chunk) => chunk.id),
       };
       setPages((current) => {
@@ -205,16 +223,8 @@ export function StudyWorkspace({
       });
       setDraftPage("");
     } catch (cause) {
-      if (streamed.trim() && plan) {
-        const partial: StudyPage = { version: 1, chapterId: chapter.id, generatedAt: Date.now(), markdown: repairModelCitations(streamed, evidence), sourceChunkIds: evidence.map((chunk) => chunk.id) };
-        setPages((current) => {
-          const nextPages = { ...current, [chapter.id]: partial };
-          persist(storageKey, plan, nextPages);
-          return nextPages;
-        });
-      }
-      setError(cause instanceof Error && cause.name !== "AbortError" ? cause.message : "Generation stopped. The partial page was saved.");
-    } finally { setBusy(undefined); }
+      setError(cause instanceof Error && cause.name !== "AbortError" ? cause.message : "Generation stopped. Nothing was saved.");
+    } finally { setDraftPage(""); setBusy(undefined); }
   }
 
   return (
@@ -256,13 +266,6 @@ function ChapterList({ plan, pages, selectedId, onSelect }: { plan?: StudyChapte
 
 function StudyNotebook({ plan, pages, onSelect }: { plan: StudyChapterPlan; pages: Record<string, StudyPage>; onSelect: (id: string) => void }) {
   return <div><div className="mb-5"><h3 className="font-semibold">Your study notebook</h3><p className="mt-1 text-sm text-muted-foreground">Generated notes are saved per chapter in this browser. Open any chapter to read or regenerate it.</p></div><div className="grid gap-3 sm:grid-cols-2">{plan.chapters.map((chapter, index) => <button key={chapter.id} className="rounded-xl border border-border bg-card p-4 text-left transition-colors hover:border-primary/35 hover:bg-accent/40" onClick={() => onSelect(chapter.id)}><div className="flex gap-3"><span className="text-sm text-muted-foreground">{index + 1}</span><div><p className="text-sm font-semibold">{chapter.title}</p><p className="mt-1 text-xs text-muted-foreground">{pages[chapter.id] ? "Notes ready" : "Not generated yet"}</p></div></div></button>)}</div></div>;
-}
-
-function inferLanguage(chunks: SourceChunk[]): string {
-  const declared = chunks.map((chunk) => chunk.sourceLanguage?.toLowerCase()).find(Boolean);
-  if (declared === "it" || declared?.startsWith("it-")) return "Italian";
-  const italian = chunks.filter((chunk) => /\b(?:dati|progettazione|esercizio|relazione|interrogazioni)\b/i.test(`${chunk.sourceTitle} ${chunk.slideTitle}`)).length;
-  return italian > chunks.length / 5 ? "Italian" : "the corpus language";
 }
 
 function persist(key: string, plan: StudyChapterPlan, pages: Record<string, StudyPage>) {

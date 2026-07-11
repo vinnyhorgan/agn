@@ -66,6 +66,15 @@ describe("grounded prompt construction", () => {
     expect(messages.at(-1)).toEqual({ role: "user", content: "Hello" });
   });
 
+  it("pins the declared language during an active learning session", () => {
+    const messages = buildGroundedMessages({
+      question: "I am not sure",
+      sourceChunks: [createChunk()],
+      responseLanguage: "Italian",
+    });
+    expect(messages[0]?.content).toContain("Answer every turn in Italian");
+  });
+
   it("includes the complete library catalog separately from retrieved evidence", () => {
     const messages = buildGroundedMessages({
       question: "Can you see every uploaded source?",
