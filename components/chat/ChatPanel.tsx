@@ -119,6 +119,7 @@ export function ChatPanel({
   const [studyOpen, setStudyOpen] = useState(false);
   const [activeChapter, setActiveChapter] = useState<StudyChapter>();
   const abortControllerRef = useRef<AbortController | undefined>(undefined);
+  const chatFormRef = useRef<HTMLFormElement>(null);
   const conversationEndRef = useRef<HTMLDivElement>(null);
   const turns = sessionTurns ?? storedTurns;
   const hasSources = sourceChunks.length > 0;
@@ -485,6 +486,7 @@ export function ChatPanel({
           </div>
         ) : null}
         <form
+          ref={chatFormRef}
           className="mx-auto flex max-w-3xl items-end gap-2 rounded-2xl border border-border bg-card p-2 shadow-[0_8px_30px_rgb(0_0_0/0.06)] transition-[border-color,box-shadow] focus-within:border-primary/45 focus-within:shadow-[0_10px_36px_rgb(0_0_0/0.09)] dark:shadow-[0_10px_34px_rgb(0_0_0/0.2)]"
           onSubmit={handleSubmit}
         >
@@ -526,16 +528,12 @@ export function ChatPanel({
         chunks={sourceChunks}
         activeChapterId={activeChapter?.id}
         onClose={() => setStudyOpen(false)}
-        onActivateChapter={(chapter) => {
-          setActiveChapter(chapter);
-          setStudyOpen(false);
-        }}
         onStartTest={(chapter) => {
           setActiveChapter(chapter);
-          setQuestion(
-            `Test me thoroughly on “${chapter.title}”. Ask one question at a time, wait for my answer, evaluate it precisely against the uploaded sources, and adapt the next question to my weaknesses. Do not reveal later answers early.`,
-          );
           setStudyOpen(false);
+          const language = sourceChunks.some((chunk) => chunk.sourceLanguage === "it") ? "Italian" : "the language of the uploaded material";
+          setQuestion(`Conduct an adaptive oral exam on “${chapter.title}”. Ask exactly one substantive question now, then wait for my answer. Evaluate each answer precisely against the uploaded course sources, explain the first error or omission with citations, and adapt the next question to my weaknesses. Do not reveal answers to questions you have not asked. Conduct the entire exam in ${language}. Chapter goals: ${chapter.goals.join("; ")}.`);
+          window.setTimeout(() => chatFormRef.current?.requestSubmit(), 0);
         }}
       />
     </section>

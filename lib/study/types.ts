@@ -48,6 +48,23 @@ export type StudyArtifact =
       title: string;
       columns: string[];
       rows: string[][];
+    }
+  | {
+      artifact: "er-diagram";
+      version: 1;
+      title: string;
+      entities: Array<{
+        id: string;
+        name: string;
+        attributes: Array<{ name: string; key?: boolean }>;
+      }>;
+      relationships: Array<{
+        from: string;
+        to: string;
+        label: string;
+        fromCardinality?: string;
+        toCardinality?: string;
+      }>;
     };
 
 export interface StudyHierarchyNode {

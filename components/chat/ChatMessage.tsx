@@ -89,6 +89,9 @@ function AssistantContent({
             code: ({ children }) => <code className="rounded bg-accent px-1 py-0.5 font-mono text-[0.85em] text-accent-foreground">{children}</code>,
             pre: ({ children }) => <pre className="mb-3 overflow-x-auto rounded-xl border border-border bg-muted/65 p-3 text-sm leading-6 [&_code]:bg-transparent [&_code]:p-0 [&_code]:text-foreground">{children}</pre>,
             blockquote: ({ children }) => <blockquote className="mb-3 border-l-2 border-primary pl-3 text-muted-foreground">{children}</blockquote>,
+            table: ({ children }) => <div className="my-4 overflow-x-auto rounded-xl border border-border"><table className="w-full min-w-[520px] border-collapse text-left text-sm">{children}</table></div>,
+            th: ({ children }) => <th className="border-b border-border bg-muted/60 p-3 font-semibold">{children}</th>,
+            td: ({ children }) => <td className="border-b border-border/60 p-3 align-top leading-6">{renderMarkdownChildren(children, validCitations, onCitationClick)}</td>,
             hr: () => null,
           }}
         >

@@ -43,6 +43,7 @@ export function chunkSlides(
       sourceTitle: source.title,
       sourcePath: source.originalPath,
       sourceMediaType: source.mediaType,
+      sourceLanguage: source.language,
       slide,
       slideImagePath,
     });
@@ -59,6 +60,7 @@ function chunkSlide({
   sourceTitle,
   sourcePath,
   sourceMediaType,
+  sourceLanguage,
   slide,
   slideImagePath,
 }: {
@@ -68,6 +70,7 @@ function chunkSlide({
   sourceTitle: string;
   sourcePath: string;
   sourceMediaType: SourceChunk["sourceMediaType"];
+  sourceLanguage: string;
   slide: ParsedSirSlide;
   slideImagePath: string;
 }): SourceChunk[] {
@@ -98,6 +101,7 @@ function chunkSlide({
       sourceTitle,
       sourcePath,
       sourceMediaType,
+      sourceLanguage,
       slideNumber: slide.slideNumber,
       sourceSlideNumber: slide.sourceSlideNumber,
       slideTitle: slide.title,

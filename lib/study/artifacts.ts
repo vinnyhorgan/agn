@@ -37,7 +37,7 @@ export function normalizeArtifactFences(content: string): string {
   return content.replace(/```json\s*\n([\s\S]*?)```/gi, (block, body: string) => {
     try {
       const parsed = JSON.parse(body) as { artifact?: unknown };
-      return parsed?.artifact === "flowchart" || parsed?.artifact === "hierarchy" || parsed?.artifact === "comparison"
+      return parsed?.artifact === "flowchart" || parsed?.artifact === "hierarchy" || parsed?.artifact === "comparison" || parsed?.artifact === "er-diagram"
         ? `\`\`\`agn-artifact\n${body.trim()}\n\`\`\``
         : block;
     } catch {
@@ -98,6 +98,38 @@ export function validateStudyArtifact(value: unknown): StudyArtifact {
       return row.map((cell) => text(cell));
     });
     return { artifact: "comparison", version: 1, title, columns, rows };
+  }
+
+  if (item.artifact === "er-diagram") {
+    if (!Array.isArray(item.entities) || !Array.isArray(item.relationships) || item.entities.length > 20) {
+      throw new Error("Invalid or oversized ER diagram.");
+    }
+    const entities = item.entities.map((entity) => {
+      const record = object(entity);
+      if (!Array.isArray(record.attributes) || record.attributes.length > 20) throw new Error("Invalid ER entity attributes.");
+      return {
+        id: text(record.id),
+        name: text(record.name),
+        attributes: record.attributes.map((attribute) => {
+          const value = object(attribute);
+          return { name: text(value.name), ...(value.key === true ? { key: true } : {}) };
+        }),
+      };
+    });
+    const ids = new Set(entities.map((entity) => entity.id));
+    if (ids.size !== entities.length) throw new Error("ER entity IDs must be unique.");
+    const relationships = item.relationships.map((relationship) => {
+      const record = object(relationship);
+      const from = text(record.from);
+      const to = text(record.to);
+      if (!ids.has(from) || !ids.has(to)) throw new Error("ER relationship has an unknown entity.");
+      return {
+        from, to, label: text(record.label),
+        ...(typeof record.fromCardinality === "string" ? { fromCardinality: text(record.fromCardinality) } : {}),
+        ...(typeof record.toCardinality === "string" ? { toCardinality: text(record.toCardinality) } : {}),
+      };
+    });
+    return { artifact: "er-diagram", version: 1, title, entities, relationships };
   }
 
   throw new Error("Unknown study artifact type.");

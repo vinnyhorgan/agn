@@ -63,6 +63,8 @@ Supported artifact shapes:
 flowchart: {"artifact":"flowchart","version":1,"title":"...","nodes":[{"id":"a","label":"..."}],"edges":[{"from":"a","to":"b","label":"..."}]}
 hierarchy: {"artifact":"hierarchy","version":1,"title":"...","root":{"label":"...","children":[...]}}
 comparison: {"artifact":"comparison","version":1,"title":"...","columns":["..."],"rows":[["..."]]}
+er-diagram: {"artifact":"er-diagram","version":1,"title":"...","entities":[{"id":"student","name":"Studente","attributes":[{"name":"matricola","key":true},{"name":"nome"}]}],"relationships":[{"from":"student","to":"exam","label":"sostiene","fromCardinality":"0..N","toCardinality":"1..1"}]}
+Use comparison artifacts instead of Markdown tables. Use an er-diagram artifact for conceptual data models, with faithful entities, keys, relationships, and cardinalities.
 Do not emit HTML, SVG, Mermaid, scripts, or coordinates. Keep artifacts small and semantic.`,
     },
     {

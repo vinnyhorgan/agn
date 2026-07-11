@@ -6,6 +6,7 @@ export interface SourceChunk {
   sourceTitle: string;
   sourcePath: string;
   sourceMediaType: "pdf" | "image" | "markdown" | "sir-v1";
+  sourceLanguage?: string;
   slideNumber: number;
   sourceSlideNumber: number;
   slideTitle?: string;

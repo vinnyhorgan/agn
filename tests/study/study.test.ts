@@ -72,6 +72,19 @@ describe("study artifacts", () => {
     expect(() => validateStudyArtifact({ artifact: "html", version: 1, title: "x", html: "<script>" })).toThrow("Unknown");
     expect(() => validateStudyArtifact({ artifact: "flowchart", version: 1, title: "x", nodes: [{ id: "a", label: "A" }], edges: [{ from: "a", to: "missing" }] })).toThrow("unknown node");
   });
+
+  it("validates a conceptual ER diagram with keys and cardinalities", () => {
+    const artifact = validateStudyArtifact({
+      artifact: "er-diagram", version: 1, title: "University",
+      entities: [
+        { id: "student", name: "Student", attributes: [{ name: "id", key: true }] },
+        { id: "exam", name: "Exam", attributes: [{ name: "date" }] },
+      ],
+      relationships: [{ from: "student", to: "exam", label: "takes", fromCardinality: "0..N", toCardinality: "1..1" }],
+    });
+    expect(artifact.artifact).toBe("er-diagram");
+    if (artifact.artifact === "er-diagram") expect(artifact.entities[0]?.attributes[0]?.key).toBe(true);
+  });
 });
 
 function createChunk(slideNumber: number): SourceChunk {

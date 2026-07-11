@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpen, Loader2, RefreshCw, X } from "lucide-react";
+import { BookOpen, CheckCircle2, Loader2, RefreshCw, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { ChatMessage } from "@/components/chat/ChatMessage";
@@ -25,7 +25,6 @@ export function StudyWorkspace({
   chunks,
   activeChapterId,
   onClose,
-  onActivateChapter,
   onStartTest,
 }: {
   open: boolean;
@@ -33,11 +32,10 @@ export function StudyWorkspace({
   chunks: SourceChunk[];
   activeChapterId?: string;
   onClose: () => void;
-  onActivateChapter: (chapter?: StudyChapter) => void;
   onStartTest: (chapter: StudyChapter) => void;
 }) {
   const libraryKey = useMemo(() => createLibraryKey(chunks), [chunks]);
-  const storageKey = `agn.study.${libraryKey}`;
+  const storageKey = `agn.study.v2.${libraryKey}`;
   const [plan, setPlan] = useState<StudyChapterPlan>();
   const [pages, setPages] = useState<Record<string, StudyPage>>({});
   const [selectedId, setSelectedId] = useState<string>();
@@ -71,6 +69,7 @@ export function StudyWorkspace({
 
   if (!open) return null;
   const selected = plan?.chapters.find((chapter) => chapter.id === selectedId);
+  const showingNotebook = selectedId === "__notebook";
 
   function createPlan() {
     const nextPlan = createDeterministicChapterPlan(chunks, inferLanguage(chunks));
@@ -107,12 +106,11 @@ export function StudyWorkspace({
     if (!apiKey.trim()) return setError("Add a DeepInfra API key before generating a study page.");
     setBusy("page"); setError(undefined);
     setDraftPage("");
+    const chapterChunks = chunksForChapter(chunks, chapter);
+    const evidence = selectStudyPageEvidence(chapterChunks);
+    let streamed = "";
     try {
-      const chapterChunks = chunksForChapter(chunks, chapter);
-      const evidence = selectStudyPageEvidence(chapterChunks);
-      let streamed = "";
       const controller = new AbortController();
-      const timeout = window.setTimeout(() => controller.abort(), 150_000);
       const response = await streamDeepInfraChatCompletionViaRoute({
         settings: { apiKey },
         messages: buildStudyPageMessages({ chapter, chunks: chapterChunks, language: inferLanguage(chapterChunks) }),
@@ -121,7 +119,6 @@ export function StudyWorkspace({
         maxTokens: 4_500,
         signal: controller.signal,
       });
-      window.clearTimeout(timeout);
       const page: StudyPage = {
         version: 1,
         chapterId: chapter.id,
@@ -129,12 +126,22 @@ export function StudyWorkspace({
         markdown: repairModelCitations(response.content || streamed, evidence),
         sourceChunkIds: evidence.map((chunk) => chunk.id),
       };
-      const nextPages = { ...pages, [chapter.id]: page };
-      setPages(nextPages);
+      setPages((current) => {
+        const nextPages = { ...current, [chapter.id]: page };
+        if (plan) persist(storageKey, plan, nextPages);
+        return nextPages;
+      });
       setDraftPage("");
-      if (plan) persist(storageKey, plan, nextPages);
     } catch (cause) {
-      setError(cause instanceof Error && cause.name !== "AbortError" ? cause.message : "Study-page generation exceeded the 150-second budget. Partial output remains visible.");
+      if (streamed.trim() && plan) {
+        const partial: StudyPage = { version: 1, chapterId: chapter.id, generatedAt: Date.now(), markdown: repairModelCitations(streamed, evidence), sourceChunkIds: evidence.map((chunk) => chunk.id) };
+        setPages((current) => {
+          const nextPages = { ...current, [chapter.id]: partial };
+          persist(storageKey, plan, nextPages);
+          return nextPages;
+        });
+      }
+      setError(cause instanceof Error && cause.name !== "AbortError" ? cause.message : "Generation stopped. The partial page was saved.");
     } finally { setBusy(undefined); }
   }
 
@@ -143,7 +150,7 @@ export function StudyWorkspace({
       <aside className="hidden w-80 shrink-0 overflow-y-auto border-r border-border p-4 md:block">
         <h2 className="text-base font-semibold">Study chapters</h2>
         <p className="mt-1 text-xs leading-5 text-muted-foreground">Cached locally for this library. Course study never searches the web automatically.</p>
-        <ChapterList plan={plan} selectedId={selectedId} onSelect={setSelectedId} />
+        <ChapterList plan={plan} pages={pages} selectedId={selectedId} onSelect={setSelectedId} />
       </aside>
       <section className="min-w-0 flex-1 overflow-y-auto">
         <header className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-background/90 px-4 py-3 backdrop-blur">
@@ -151,13 +158,16 @@ export function StudyWorkspace({
           <Button variant="ghost" size="icon" aria-label="Close study chapters" onClick={onClose}><X /></Button>
         </header>
         <div className="mx-auto max-w-4xl p-4 sm:p-7">
-          <div className="mb-4 md:hidden"><ChapterList plan={plan} selectedId={selectedId} onSelect={setSelectedId} /></div>
+          <div className="mb-4 md:hidden"><ChapterList plan={plan} pages={pages} selectedId={selectedId} onSelect={setSelectedId} /></div>
           {error ? <p className="mb-4 rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{error}</p> : null}
+          {plan ? <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-border/70 bg-muted/30 px-3 py-2"><p className="text-xs text-muted-foreground">Chapters are built locally from source structure.</p><Button size="sm" variant="ghost" disabled={Boolean(busy)} title="Ask the model to improve chapter boundaries, titles, goals, and prerequisite order without changing source coverage." onClick={() => void refinePlan()}>{busy === "plan" ? <Loader2 className="animate-spin" /> : null}Improve chapter organization</Button></div> : null}
           {!plan ? (
             <div className="rounded-2xl border border-border bg-card p-6 text-center"><BookOpen className="mx-auto mb-3 size-7 text-primary" /><h3 className="font-semibold">Turn the corpus into a curriculum</h3><p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-muted-foreground">AGN builds an instant local curriculum from source structure and slide titles. No API call or web search is needed.</p><Button className="mt-5" disabled={chunks.length === 0} onClick={createPlan}>Build chapters</Button></div>
+          ) : showingNotebook ? (
+            <StudyNotebook plan={plan} pages={pages} onSelect={setSelectedId} />
           ) : selected ? (
             <>
-              <div className="mb-5 rounded-2xl border border-border bg-card p-4"><p className="text-sm leading-6">{selected.description}</p><ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-muted-foreground">{selected.goals.map((goal) => <li key={goal}>{goal}</li>)}</ul><div className="mt-4 flex flex-wrap gap-2"><Button size="sm" variant={activeChapterId === selected.id ? "secondary" : "default"} onClick={() => onActivateChapter(activeChapterId === selected.id ? undefined : selected)}>{activeChapterId === selected.id ? "Studying this chapter" : "Study this chapter in chat"}</Button><Button size="sm" variant="secondary" onClick={() => onStartTest(selected)}>Test me thoroughly</Button><Button size="sm" variant="outline" disabled={busy === "page"} onClick={() => void createPage(selected)}>{busy === "page" ? <Loader2 className="animate-spin" /> : pages[selected.id] ? <RefreshCw /> : null}{pages[selected.id] ? "Regenerate page" : "Generate study page"}</Button><Button size="sm" variant="ghost" disabled={busy === "plan"} onClick={() => void refinePlan()}>{busy === "plan" ? <Loader2 className="animate-spin" /> : null}Optionally refine curriculum with AI</Button></div></div>
+              <div className="mb-5 rounded-2xl border border-border bg-card p-4"><p className="text-sm leading-6">{selected.description}</p><ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-muted-foreground">{selected.goals.map((goal) => <li key={goal}>{goal}</li>)}</ul><div className="mt-4 flex flex-wrap gap-2"><Button size="sm" onClick={() => onStartTest(selected)}>Start oral exam</Button><Button size="sm" variant="outline" disabled={busy === "page"} onClick={() => void createPage(selected)}>{busy === "page" ? <Loader2 className="animate-spin" /> : pages[selected.id] ? <RefreshCw /> : null}{pages[selected.id] ? "Regenerate notes" : "Generate chapter notes"}</Button></div></div>
               {draftPage ? <ChatMessage role="assistant" content={draftPage} /> : pages[selected.id] ? <ChatMessage role="assistant" content={pages[selected.id]!.markdown} /> : <p className="py-12 text-center text-sm text-muted-foreground">Generate a durable study page with explanations, examples, traps, citations, and diagrams where useful.</p>}
             </>
           ) : null}
@@ -167,12 +177,18 @@ export function StudyWorkspace({
   );
 }
 
-function ChapterList({ plan, selectedId, onSelect }: { plan?: StudyChapterPlan; selectedId?: string; onSelect: (id: string) => void }) {
+function ChapterList({ plan, pages, selectedId, onSelect }: { plan?: StudyChapterPlan; pages: Record<string, StudyPage>; selectedId?: string; onSelect: (id: string) => void }) {
   if (!plan) return null;
-  return <nav className="mt-4 space-y-1">{plan.chapters.map((chapter, index) => <button key={chapter.id} className={`w-full rounded-lg px-3 py-2 text-left text-sm ${selectedId === chapter.id ? "bg-primary text-primary-foreground" : "hover:bg-accent"}`} onClick={() => onSelect(chapter.id)}><span className="mr-2 opacity-60">{index + 1}.</span>{chapter.title}</button>)}</nav>;
+  return <nav className="mt-4 space-y-1"><button className={`mb-2 w-full rounded-lg px-3 py-2 text-left text-sm font-medium ${selectedId === "__notebook" ? "bg-primary text-primary-foreground" : "bg-accent hover:bg-accent/70"}`} onClick={() => onSelect("__notebook")}>All chapter notes <span className="float-right opacity-70">{Object.keys(pages).length}/{plan.chapters.length}</span></button>{plan.chapters.map((chapter, index) => <button key={chapter.id} className={`flex w-full items-start gap-2 rounded-lg px-3 py-2 text-left text-sm ${selectedId === chapter.id ? "bg-primary text-primary-foreground" : "hover:bg-accent"}`} onClick={() => onSelect(chapter.id)}><span className="opacity-60">{index + 1}.</span><span className="min-w-0 flex-1">{chapter.title}</span>{pages[chapter.id] ? <CheckCircle2 className="mt-0.5 size-4 shrink-0" /> : null}</button>)}</nav>;
+}
+
+function StudyNotebook({ plan, pages, onSelect }: { plan: StudyChapterPlan; pages: Record<string, StudyPage>; onSelect: (id: string) => void }) {
+  return <div><div className="mb-5"><h3 className="font-semibold">Your study notebook</h3><p className="mt-1 text-sm text-muted-foreground">Generated notes are saved per chapter in this browser. Open any chapter to read or regenerate it.</p></div><div className="grid gap-3 sm:grid-cols-2">{plan.chapters.map((chapter, index) => <button key={chapter.id} className="rounded-xl border border-border bg-card p-4 text-left transition-colors hover:border-primary/35 hover:bg-accent/40" onClick={() => onSelect(chapter.id)}><div className="flex gap-3"><span className="text-sm text-muted-foreground">{index + 1}</span><div><p className="text-sm font-semibold">{chapter.title}</p><p className="mt-1 text-xs text-muted-foreground">{pages[chapter.id] ? "Notes ready" : "Not generated yet"}</p></div></div></button>)}</div></div>;
 }
 
 function inferLanguage(chunks: SourceChunk[]): string {
+  const declared = chunks.map((chunk) => chunk.sourceLanguage?.toLowerCase()).find(Boolean);
+  if (declared === "it" || declared?.startsWith("it-")) return "Italian";
   const italian = chunks.filter((chunk) => /\b(?:dati|progettazione|esercizio|relazione|interrogazioni)\b/i.test(`${chunk.sourceTitle} ${chunk.slideTitle}`)).length;
   return italian > chunks.length / 5 ? "Italian" : "the corpus language";
 }
