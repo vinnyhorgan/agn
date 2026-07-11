@@ -36,38 +36,36 @@ export function buildGroundedMessages({
   webResults?: WebSearchResult[];
   history?: ConversationTurn[];
 }): LlmMessage[] {
+  const dynamicContext = [
+    `Runtime model: ${runtimeModel ?? "Not specified"}`,
+    ...(librarySources.length > 0
+      ? [
+          "",
+          "Complete uploaded-source catalog for this request:",
+          buildLibraryCatalog(librarySources),
+        ]
+      : []),
+    ...(sourceChunks.length > 0
+      ? [
+          "",
+          "Relevant uploaded SIR evidence:",
+          buildSourceBlock(sourceChunks),
+        ]
+      : []),
+    ...(webResults.length > 0
+      ? ["", "Relevant web evidence:", buildWebBlock(webResults)]
+      : []),
+  ].join("\n");
+
   return [
     {
       role: "system",
-      content: groundedSystemInstruction,
+      content: `${groundedSystemInstruction}\n\n${dynamicContext}`,
     },
     ...history.flatMap<LlmMessage>((turn) => [
       { role: "user", content: turn.question },
       { role: "assistant", content: turn.answer },
     ]),
-    {
-      role: "developer",
-      content: [
-        `Runtime model: ${runtimeModel ?? "Not specified"}`,
-        ...(librarySources.length > 0
-          ? [
-              "",
-              "Complete uploaded-source catalog for this request:",
-              buildLibraryCatalog(librarySources),
-            ]
-          : []),
-        ...(sourceChunks.length > 0
-          ? [
-              "",
-              "Relevant uploaded SIR evidence:",
-              buildSourceBlock(sourceChunks),
-            ]
-          : []),
-        ...(webResults.length > 0
-          ? ["", "Relevant web evidence:", buildWebBlock(webResults)]
-          : []),
-      ].join("\n"),
-    },
     { role: "user", content: question.trim() },
   ];
 }

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { POST } from "../../app/api/deepinfra/chat/route";
 import {
   DEEPINFRA_BASE_URL,
   DEEPINFRA_MODEL,
@@ -124,5 +125,23 @@ describe("DeepInfra chat completion", () => {
       stream: true,
       reasoning_effort: "medium",
     });
+  });
+
+  it("rejects unsupported developer-role messages before contacting DeepInfra", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      new Request("http://localhost/api/deepinfra/chat", {
+        method: "POST",
+        body: JSON.stringify({
+          apiKey: "deepinfra-key",
+          messages: [{ role: "developer", content: "Dynamic context" }],
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

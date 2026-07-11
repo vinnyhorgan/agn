@@ -60,10 +60,9 @@ describe("grounded prompt construction", () => {
       question: "Hello",
       sourceChunks: [],
     });
-    expect(messages.at(-2)).toEqual({
-      role: "developer",
-      content: "Runtime model: Not specified",
-    });
+    expect(messages).toHaveLength(2);
+    expect(messages[0]?.role).toBe("system");
+    expect(messages[0]?.content).toContain("Runtime model: Not specified");
     expect(messages.at(-1)).toEqual({ role: "user", content: "Hello" });
   });
 
@@ -84,7 +83,7 @@ describe("grounded prompt construction", () => {
         },
       ],
     });
-    const promptText = messages.at(-2)?.content ?? "";
+    const promptText = messages[0]?.content ?? "";
 
     expect(promptText).toContain("Runtime model: test-model via DeepInfra");
     expect(promptText).toContain("Total uploaded sources: 1");

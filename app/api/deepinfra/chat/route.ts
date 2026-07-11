@@ -9,7 +9,6 @@ import type { LlmMessage, LlmMessageRole } from "@/lib/llm/types";
 
 const allowedRoles = new Set<LlmMessageRole>([
   "system",
-  "developer",
   "user",
   "assistant",
 ]);
