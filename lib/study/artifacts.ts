@@ -11,8 +11,8 @@ export interface StudyContentPart {
 }
 
 export function parseStudyContent(content: string): StudyContentPart[] {
-  content = normalizeArtifactFences(content);
-  const pattern = /```agn-artifact\s*\n([\s\S]*?)```/gi;
+  content = repairIncompleteArtifactFences(normalizeArtifactFences(content));
+  const pattern = /```\s*agn-artifact\s*\n([\s\S]*?)```/gi;
   const parts: StudyContentPart[] = [];
   let cursor = 0;
   for (const match of content.matchAll(pattern)) {
@@ -31,6 +31,60 @@ export function parseStudyContent(content: string): StudyContentPart[] {
   }
   if (cursor < content.length) parts.push({ type: "markdown", content: content.slice(cursor) });
   return parts.length > 0 ? parts : [{ type: "markdown", content }];
+}
+
+export function repairIncompleteArtifactFences(content: string): string {
+  const opening = /```\s*(?:agn-artifact|json)\s*\n/gi;
+  let cursor = 0;
+  let repaired = "";
+  while (cursor < content.length) {
+    opening.lastIndex = cursor;
+    const match = opening.exec(content);
+    if (!match) return repaired + content.slice(cursor);
+    repaired += content.slice(cursor, match.index);
+    const bodyStart = match.index + match[0].length;
+    const closing = content.indexOf("```", bodyStart);
+    if (closing >= 0) {
+      repaired += content.slice(match.index, closing + 3);
+      cursor = closing + 3;
+      continue;
+    }
+    const jsonStart = content.indexOf("{", bodyStart);
+    const jsonEnd = jsonStart >= 0 ? findBalancedJsonEnd(content, jsonStart) : -1;
+    if (jsonEnd >= 0) {
+      const body = content.slice(jsonStart, jsonEnd + 1);
+      try {
+        const parsed = JSON.parse(body) as { artifact?: unknown };
+        if (typeof parsed.artifact === "string") {
+          repaired += `\`\`\`agn-artifact\n${body}\n\`\`\``;
+          cursor = jsonEnd + 1;
+          continue;
+        }
+      } catch { /* Leave malformed output readable below. */ }
+    }
+    repaired += "Diagram generation was interrupted.\n\n";
+    cursor = bodyStart;
+  }
+  return repaired;
+}
+
+function findBalancedJsonEnd(content: string, start: number): number {
+  let depth = 0;
+  let quoted = false;
+  let escaped = false;
+  for (let index = start; index < content.length; index += 1) {
+    const character = content[index]!;
+    if (quoted) {
+      if (escaped) escaped = false;
+      else if (character === "\\") escaped = true;
+      else if (character === '"') quoted = false;
+      continue;
+    }
+    if (character === '"') quoted = true;
+    else if (character === "{") depth += 1;
+    else if (character === "}" && --depth === 0) return index;
+  }
+  return -1;
 }
 
 export function normalizeArtifactFences(content: string): string {

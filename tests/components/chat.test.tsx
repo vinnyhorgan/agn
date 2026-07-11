@@ -52,7 +52,7 @@ describe("chat interactions", () => {
     expect(screen.getByText("Execute")).toBeTruthy();
   });
 
-  it("builds and persists a local study curriculum without an API request", async () => {
+  it("offers and persists an explicit basic outline without an API request", async () => {
     const user = userEvent.setup();
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
@@ -65,7 +65,7 @@ describe("chat interactions", () => {
     };
     render(<ChatPanel sourceChunks={[source]} sourceCount={1} />);
     await user.click(screen.getByRole("button", { name: "Study chapters" }));
-    await user.click(screen.getByRole("button", { name: "Build chapters" }));
+    await user.click(screen.getByRole("button", { name: "Use basic outline" }));
     expect(screen.getAllByText(/Relational model/).length).toBeGreaterThan(0);
     expect(fetchMock).not.toHaveBeenCalled();
     expect(Object.keys(window.localStorage).some((key) => key.startsWith("agn.study."))).toBe(true);

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseStudyContent, validateStudyArtifact } from "../../lib/study/artifacts";
+import { parseStudyContent, repairIncompleteArtifactFences, validateStudyArtifact } from "../../lib/study/artifacts";
 import {
   buildCorpusOutline,
   chunksForChapter,
@@ -84,6 +84,19 @@ describe("study artifacts", () => {
     });
     expect(artifact.artifact).toBe("er-diagram");
     if (artifact.artifact === "er-diagram") expect(artifact.entities[0]?.attributes[0]?.key).toBe(true);
+  });
+
+  it("recovers a complete artifact when the model omits its closing fence", () => {
+    const content = 'Before\n```agn-artifact\n{"artifact":"comparison","version":1,"title":"Exam","columns":["Part","Score"],"rows":[["Oral","30"]]}\nAfter the table.';
+    const parts = parseStudyContent(content);
+    expect(parts.some((part) => part.artifact?.artifact === "comparison")).toBe(true);
+    expect(parts.at(-1)?.content).toContain("After the table.");
+  });
+
+  it("removes an unterminated fence so later prose is not rendered as one code block", () => {
+    const repaired = repairIncompleteArtifactFences("```json\n{broken\n## Later section");
+    expect(repaired).not.toContain("```");
+    expect(repaired).toContain("## Later section");
   });
 });
 

@@ -56,6 +56,7 @@ export function buildStudyPageMessages({
       content: `You create a self-contained, exam-quality study page from uploaded course evidence.
 The uploaded evidence is authoritative. Do not add web knowledge. Distinguish any necessary general knowledge.
 Write in ${language}. Be dense but teach clearly: intuition, exact concepts and rules, worked examples, common traps, and a final mastery checklist.
+Target 1,200-2,200 words. Cover only the chapter's examinable learning goals. Do not pad the page with course schedules, instructor information, communications, textbooks, or exam logistics.
 Remove administrative filler and repetition. Preserve course notation and terminology.
 Every source-grounded section must cite [Source N, Slide M]. Never invent citations.
 Use Markdown. When a diagram materially improves understanding, include one or more strict agn-artifact JSON fences.
@@ -65,6 +66,7 @@ hierarchy: {"artifact":"hierarchy","version":1,"title":"...","root":{"label":"..
 comparison: {"artifact":"comparison","version":1,"title":"...","columns":["..."],"rows":[["..."]]}
 er-diagram: {"artifact":"er-diagram","version":1,"title":"...","entities":[{"id":"student","name":"Studente","attributes":[{"name":"matricola","key":true},{"name":"nome"}]}],"relationships":[{"from":"student","to":"exam","label":"sostiene","fromCardinality":"0..N","toCardinality":"1..1"}]}
 Use comparison artifacts instead of Markdown tables. Use an er-diagram artifact for conceptual data models, with faithful entities, keys, relationships, and cardinalities.
+Put each artifact JSON object on one line inside a correctly closed agn-artifact fence. Do not nest fences.
 Do not emit HTML, SVG, Mermaid, scripts, or coordinates. Keep artifacts small and semantic.`,
     },
     {

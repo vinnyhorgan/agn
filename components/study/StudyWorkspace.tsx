@@ -35,7 +35,7 @@ export function StudyWorkspace({
   onStartTest: (chapter: StudyChapter) => void;
 }) {
   const libraryKey = useMemo(() => createLibraryKey(chunks), [chunks]);
-  const storageKey = `agn.study.v2.${libraryKey}`;
+  const storageKey = `agn.study.v3.${libraryKey}`;
   const [plan, setPlan] = useState<StudyChapterPlan>();
   const [pages, setPages] = useState<Record<string, StudyPage>>({});
   const [selectedId, setSelectedId] = useState<string>();
@@ -71,7 +71,26 @@ export function StudyWorkspace({
   const selected = plan?.chapters.find((chapter) => chapter.id === selectedId);
   const showingNotebook = selectedId === "__notebook";
 
-  function createPlan() {
+  async function createPlan() {
+    if (!apiKey.trim()) return setError("Add a DeepInfra API key to organize this corpus into meaningful study chapters.");
+    setBusy("plan"); setError(undefined);
+    try {
+      const response = await streamDeepInfraChatCompletionViaRoute({
+        settings: { apiKey },
+        messages: buildChapterPlannerMessages(chunks, inferLanguage(chunks)),
+        onDelta() {},
+        reasoningEffort: "low",
+        maxTokens: 8_000,
+      });
+      const nextPlan = parseChapterPlan(response.content, chunks, inferLanguage(chunks));
+      setPlan(nextPlan); setPages({}); setSelectedId(nextPlan.chapters[0]?.id);
+      persist(storageKey, nextPlan, {});
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not organize the course into chapters.");
+    } finally { setBusy(undefined); }
+  }
+
+  function createBasicPlan() {
     const nextPlan = createDeterministicChapterPlan(chunks, inferLanguage(chunks));
     setPlan(nextPlan); setPages({}); setSelectedId(nextPlan.chapters[0]?.id);
     persist(storageKey, nextPlan, {});
@@ -81,8 +100,6 @@ export function StudyWorkspace({
     if (!apiKey.trim()) return setError("Add a DeepInfra API key before building chapters.");
     setBusy("plan"); setError(undefined);
     try {
-      const controller = new AbortController();
-      const timeout = window.setTimeout(() => controller.abort(), 90_000);
       const response = await streamDeepInfraChatCompletionViaRoute({
         settings: { apiKey },
         messages: plan
@@ -91,14 +108,12 @@ export function StudyWorkspace({
         onDelta() {},
         reasoningEffort: "low",
         maxTokens: 8_000,
-        signal: controller.signal,
       });
-      window.clearTimeout(timeout);
       const nextPlan = parseChapterPlan(response.content, chunks, inferLanguage(chunks));
       setPlan(nextPlan); setPages({}); setSelectedId(nextPlan.chapters[0]?.id);
       persist(storageKey, nextPlan, {});
     } catch (cause) {
-      setError(cause instanceof Error && cause.name !== "AbortError" ? cause.message : "Optional curriculum refinement exceeded the 90-second budget. The local curriculum is still available.");
+      setError(cause instanceof Error ? cause.message : "Could not improve the chapter organization. The existing curriculum is unchanged.");
     } finally { setBusy(undefined); }
   }
 
@@ -116,7 +131,7 @@ export function StudyWorkspace({
         messages: buildStudyPageMessages({ chapter, chunks: chapterChunks, language: inferLanguage(chapterChunks) }),
         onDelta(delta) { streamed += delta; setDraftPage(streamed); },
         reasoningEffort: "low",
-        maxTokens: 4_500,
+        maxTokens: 8_000,
         signal: controller.signal,
       });
       const page: StudyPage = {
@@ -160,9 +175,9 @@ export function StudyWorkspace({
         <div className="mx-auto max-w-4xl p-4 sm:p-7">
           <div className="mb-4 md:hidden"><ChapterList plan={plan} pages={pages} selectedId={selectedId} onSelect={setSelectedId} /></div>
           {error ? <p className="mb-4 rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{error}</p> : null}
-          {plan ? <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-border/70 bg-muted/30 px-3 py-2"><p className="text-xs text-muted-foreground">Chapters are built locally from source structure.</p><Button size="sm" variant="ghost" disabled={Boolean(busy)} title="Ask the model to improve chapter boundaries, titles, goals, and prerequisite order without changing source coverage." onClick={() => void refinePlan()}>{busy === "plan" ? <Loader2 className="animate-spin" /> : null}Improve chapter organization</Button></div> : null}
+          {plan ? <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-border/70 bg-muted/30 px-3 py-2"><p className="text-xs text-muted-foreground">The AI organized examinable concepts and dependencies from the complete source outline.</p><Button size="sm" variant="ghost" disabled={Boolean(busy)} title="Re-run the AI planner to improve chapter boundaries, titles, goals, and prerequisite order." onClick={() => void refinePlan()}>{busy === "plan" ? <Loader2 className="animate-spin" /> : null}Reorganize with AI</Button></div> : null}
           {!plan ? (
-            <div className="rounded-2xl border border-border bg-card p-6 text-center"><BookOpen className="mx-auto mb-3 size-7 text-primary" /><h3 className="font-semibold">Turn the corpus into a curriculum</h3><p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-muted-foreground">AGN builds an instant local curriculum from source structure and slide titles. No API call or web search is needed.</p><Button className="mt-5" disabled={chunks.length === 0} onClick={createPlan}>Build chapters</Button></div>
+            <div className="rounded-2xl border border-border bg-card p-6 text-center"><BookOpen className="mx-auto mb-3 size-7 text-primary" /><h3 className="font-semibold">Turn the corpus into a curriculum</h3><p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-muted-foreground">AGN uses the model to identify examinable concepts, combine overlapping sources and exercises, and order chapters by prerequisite—not by filename.</p><div className="mt-5 flex flex-wrap justify-center gap-2"><Button disabled={chunks.length === 0 || busy === "plan"} onClick={() => void createPlan()}>{busy === "plan" ? <Loader2 className="animate-spin" /> : null}{busy === "plan" ? "Organizing course…" : "Organize chapters with AI"}</Button><Button variant="ghost" disabled={chunks.length === 0 || Boolean(busy)} title="Fast fallback based only on source boundaries and slide titles; less accurate." onClick={createBasicPlan}>Use basic outline</Button></div></div>
           ) : showingNotebook ? (
             <StudyNotebook plan={plan} pages={pages} onSelect={setSelectedId} />
           ) : selected ? (
