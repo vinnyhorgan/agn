@@ -10,6 +10,7 @@ import { streamDeepInfraChatCompletionViaRoute } from "@/lib/llm/openAiCompatibl
 import type { SourceChunk } from "@/lib/search/types";
 import {
   buildChapterPlannerMessages,
+  buildChapterPlanRepairMessages,
   buildChapterRefinementMessages,
   chunksForChapter,
   createDeterministicChapterPlan,
@@ -81,8 +82,9 @@ export function StudyWorkspace({
         onDelta() {},
         reasoningEffort: "low",
         maxTokens: 8_000,
+        responseFormat: "json_object",
       });
-      const nextPlan = parseChapterPlan(response.content, chunks, inferLanguage(chunks));
+      const nextPlan = await parseOrRepairPlan(response.content);
       setPlan(nextPlan); setPages({}); setSelectedId(nextPlan.chapters[0]?.id);
       persist(storageKey, nextPlan, {});
     } catch (cause) {
@@ -108,13 +110,36 @@ export function StudyWorkspace({
         onDelta() {},
         reasoningEffort: "low",
         maxTokens: 8_000,
+        responseFormat: "json_object",
       });
-      const nextPlan = parseChapterPlan(response.content, chunks, inferLanguage(chunks));
+      const nextPlan = await parseOrRepairPlan(response.content);
       setPlan(nextPlan); setPages({}); setSelectedId(nextPlan.chapters[0]?.id);
       persist(storageKey, nextPlan, {});
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not improve the chapter organization. The existing curriculum is unchanged.");
     } finally { setBusy(undefined); }
+  }
+
+  async function parseOrRepairPlan(content: string): Promise<StudyChapterPlan> {
+    try {
+      return parseChapterPlan(content, chunks, inferLanguage(chunks));
+    } catch {
+      setError("The model returned malformed curriculum data. Repairing it now…");
+      const repaired = await streamDeepInfraChatCompletionViaRoute({
+        settings: { apiKey },
+        messages: buildChapterPlanRepairMessages(content),
+        onDelta() {},
+        reasoningEffort: "low",
+        maxTokens: 8_000,
+        responseFormat: "json_object",
+      });
+      setError(undefined);
+      try {
+        return parseChapterPlan(repaired.content, chunks, inferLanguage(chunks));
+      } catch {
+        throw new Error("The provider returned invalid curriculum data twice. Your existing study data was not changed; please retry.");
+      }
+    }
   }
 
   async function createPage(chapter: StudyChapter) {

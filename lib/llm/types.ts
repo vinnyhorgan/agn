@@ -38,6 +38,7 @@ export interface ChatCompletionRequest {
   temperature: number;
   reasoning_effort?: "low" | "medium" | "high";
   max_tokens?: number;
+  response_format?: { type: "json_object" };
   stream?: boolean;
 }
 

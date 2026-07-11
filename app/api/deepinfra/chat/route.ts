@@ -24,6 +24,7 @@ export async function POST(request: Request) {
   const shouldStream = readShouldStream(payload);
   const reasoningEffort = readReasoningEffort(payload);
   const maxTokens = readMaxTokens(payload);
+  const responseFormat = readResponseFormat(payload);
 
   if (!apiKey) {
     return NextResponse.json(
@@ -47,6 +48,7 @@ export async function POST(request: Request) {
         signal: request.signal,
         reasoningEffort,
         maxTokens,
+        responseFormat,
       });
 
       return new Response(stream, {
@@ -63,6 +65,7 @@ export async function POST(request: Request) {
       messages: messageValidation.messages,
       reasoningEffort,
       maxTokens,
+      responseFormat,
     });
 
     return NextResponse.json(result);
@@ -75,6 +78,13 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ error: message }, { status });
   }
+}
+
+function readResponseFormat(payload: unknown): "json_object" | undefined {
+  if (payload && typeof payload === "object" && "responseFormat" in payload && payload.responseFormat === "json_object") {
+    return "json_object";
+  }
+  return undefined;
 }
 
 function readReasoningEffort(payload: unknown): "low" | "medium" | "high" {

@@ -58,6 +58,14 @@ describe("DeepInfra chat completion", () => {
     });
   });
 
+  it("requests provider-enforced JSON for structured tasks", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ choices: [{ message: { content: "{}" } }] }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await createDeepInfraChatCompletion({ settings: { apiKey: "deepinfra-key" }, messages, responseFormat: "json_object" });
+    const request = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect(JSON.parse(String(request.body))).toMatchObject({ response_format: { type: "json_object" } });
+  });
+
   it("does not call DeepInfra when the API key is missing", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);

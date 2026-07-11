@@ -5,8 +5,8 @@ import type {
   StudyChapterScope,
 } from "@/lib/study/types";
 
-const maxOutlineCharacters = 26_000;
-const maxSlidesPerSource = 18;
+const maxOutlineCharacters = 18_000;
+const maxSlidesPerSource = 12;
 const maxChapters = 24;
 const maxGoals = 6;
 const targetChapterSlides = 95;
@@ -332,6 +332,16 @@ Keep 10-24 chapters and use exactly this shape: {"version":1,"title":"...","lang
       role: "user",
       content: `Source ranges:\n${sourceRanges}\n\nExisting curriculum:\n${JSON.stringify({ title: plan.title, language: plan.language, chapters: plan.chapters })}`,
     },
+  ];
+}
+
+export function buildChapterPlanRepairMessages(content: string) {
+  return [
+    {
+      role: "system" as const,
+      content: "Repair malformed curriculum JSON. Return only one valid JSON object. Preserve all chapter content, deck IDs, slide ranges, titles, descriptions, and goals exactly where possible. Fix syntax only; do not explain the repair.",
+    },
+    { role: "user" as const, content: content.slice(0, 30_000) },
   ];
 }
 
