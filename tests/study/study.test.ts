@@ -96,6 +96,23 @@ describe("study artifacts", () => {
     if (artifact.artifact === "er-diagram") expect(artifact.entities[0]?.attributes[0]?.key).toBe(true);
   });
 
+  it("normalizes harmless ER attribute variations from model output", () => {
+    const artifact = validateStudyArtifact({
+      artifact: "er-diagram", version: 1, title: "Places",
+      entities: [
+        { id: "city", name: "City", attributes: ["name", { name: "postalCode", key: "true" }] },
+        { id: "province", name: "Province", attributes: "name, region" },
+        { id: "country", name: "Country" },
+      ],
+      relationships: [{ from: "city", to: "province", label: "belongs to" }],
+    });
+    expect(artifact.artifact).toBe("er-diagram");
+    if (artifact.artifact === "er-diagram") {
+      expect(artifact.entities.map((entity) => entity.attributes.length)).toEqual([2, 2, 0]);
+      expect(artifact.entities[0]?.attributes[1]?.key).toBe(true);
+    }
+  });
+
   it("recovers a complete artifact when the model omits its closing fence", () => {
     const content = 'Before\n```agn-artifact\n{"artifact":"comparison","version":1,"title":"Exam","columns":["Part","Score"],"rows":[["Oral","30"]]}\nAfter the table.';
     const parts = parseStudyContent(content);

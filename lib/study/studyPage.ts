@@ -65,6 +65,7 @@ flowchart: {"artifact":"flowchart","version":1,"title":"...","nodes":[{"id":"a",
 hierarchy: {"artifact":"hierarchy","version":1,"title":"...","root":{"label":"...","children":[...]}}
 er-diagram: {"artifact":"er-diagram","version":1,"title":"...","entities":[{"id":"student","name":"Studente","attributes":[{"name":"matricola","key":true},{"name":"nome"}]}],"relationships":[{"from":"student","to":"exam","label":"sostiene","fromCardinality":"0..N","toCardinality":"1..1"}]}
 Use normal Markdown tables for comparisons and tabular information; do not emit table or comparison artifacts. Use an er-diagram artifact for conceptual data models, with faithful entities, keys, relationships, and cardinalities.
+Use hierarchy only for genuine parent-child containment. Place the broadest parent at the top. For ordered layers, pipelines, or transformations, use a flowchart and preserve the direction stated by the evidence. Check every diagram's semantics against the source before emitting it.
 Put each artifact JSON object on one line inside a correctly closed agn-artifact fence. Do not nest fences.
 Do not emit HTML, SVG, Mermaid, scripts, or coordinates. Keep artifacts small and semantic.`,
     },

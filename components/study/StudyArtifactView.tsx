@@ -45,7 +45,9 @@ function HierarchyNode({ node, root = false }: { node: StudyHierarchyNode; root?
     <span className="relative z-10 rounded-xl border border-primary/25 bg-primary/5 px-4 py-2 text-center font-medium shadow-sm">{node.label}</span>
     {children.length > 0 ? <>
       <span className="h-5 border-l-2 border-primary/30" aria-hidden />
-      <div className="relative flex items-start gap-5 px-3 before:absolute before:left-[calc(1.5rem)] before:right-[calc(1.5rem)] before:top-0 before:border-t-2 before:border-primary/30">
+      <div className={children.length > 1
+        ? "relative flex items-start gap-5 px-3 before:absolute before:left-[calc(1.5rem)] before:right-[calc(1.5rem)] before:top-0 before:border-t-2 before:border-primary/30"
+        : "relative flex items-start"}>
         {children.map((child, index) => <HierarchyNode key={`${child.label}-${index}`} node={child} />)}
       </div>
     </> : null}

@@ -160,13 +160,15 @@ export function validateStudyArtifact(value: unknown): StudyArtifact {
     }
     const entities = item.entities.map((entity) => {
       const record = object(entity);
-      if (!Array.isArray(record.attributes) || record.attributes.length > 20) throw new Error("Invalid ER entity attributes.");
+      const rawAttributes = normalizeErAttributes(record.attributes);
+      if (rawAttributes.length > 20) throw new Error("Invalid ER entity attributes.");
       return {
         id: text(record.id),
         name: text(record.name),
-        attributes: record.attributes.map((attribute) => {
+        attributes: rawAttributes.map((attribute) => {
+          if (typeof attribute === "string") return { name: text(attribute) };
           const value = object(attribute);
-          return { name: text(value.name), ...(value.key === true ? { key: true } : {}) };
+          return { name: text(value.name), ...(value.key === true || value.key === "true" ? { key: true } : {}) };
         }),
       };
     });
@@ -187,6 +189,20 @@ export function validateStudyArtifact(value: unknown): StudyArtifact {
   }
 
   throw new Error("Unknown study artifact type.");
+}
+
+function normalizeErAttributes(value: unknown): unknown[] {
+  if (value === undefined || value === null) return [];
+  if (Array.isArray(value)) return value;
+  if (typeof value === "string") return value.split(",").map((attribute) => attribute.trim()).filter(Boolean);
+  if (typeof value === "object") {
+    return Object.entries(value as Record<string, unknown>).map(([name, details]) =>
+      typeof details === "object" && details !== null
+        ? { name, ...(details as Record<string, unknown>) }
+        : { name },
+    );
+  }
+  throw new Error("Invalid ER entity attributes.");
 }
 
 /** Recover the small set of JSON punctuation mistakes text models commonly make. */
