@@ -59,6 +59,15 @@ describe("citation repair", () => {
       ),
     ).toBe("Sequence [Source 4, Slide 3] [Source 4, Slide 4] [Source 4, Slide 5]. Generic.");
   });
+
+  it("expands comma-separated slides and compound ranges", () => {
+    expect(
+      repairModelCitations(
+        "Sets [Source 3, Slides 2, 4, 6]. Ranges [Source 3, Slides 8-9, 11-12].",
+        [2, 4, 6, 8, 9, 11, 12].map((slide) => createChunk("Source 3", slide)),
+      ),
+    ).toBe("Sets [Source 3, Slide 2] [Source 3, Slide 4] [Source 3, Slide 6]. Ranges [Source 3, Slide 8] [Source 3, Slide 9] [Source 3, Slide 11] [Source 3, Slide 12].");
+  });
 });
 
 function createChunk(sourceLabel: string, slideNumber: number): SourceChunk {

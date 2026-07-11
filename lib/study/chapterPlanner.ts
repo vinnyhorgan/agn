@@ -9,8 +9,10 @@ const maxOutlineCharacters = 18_000;
 const maxSlidesPerSource = 12;
 const maxChapters = 24;
 const maxGoals = 6;
-const targetChapterSlides = 95;
-const maxChapterSlides = 125;
+// Compact AI organization can merge candidate units, but cannot safely invent
+// slide boundaries. Keep candidates narrow enough that their title matches scope.
+const targetChapterSlides = 32;
+const maxChapterSlides = 45;
 
 interface SlideOutlineItem {
   deckId: string;
@@ -128,8 +130,8 @@ function segmentSource(slides: SlideOutlineItem[]): ChapterSegment[] {
 }
 
 function findBoundary(slides: SlideOutlineItem[], idealEnd: number): number {
-  const minimum = Math.max(1, idealEnd - 12);
-  const maximum = Math.min(slides.length - 1, idealEnd + 12);
+  const minimum = Math.max(1, idealEnd - 8);
+  const maximum = Math.min(slides.length - 1, idealEnd + 8);
   let best = idealEnd;
   let bestScore = -Infinity;
   for (let index = minimum; index <= maximum; index += 1) {
@@ -138,7 +140,7 @@ function findBoundary(slides: SlideOutlineItem[], idealEnd: number): number {
     const marker = /^(?:capitolo|chapter|parte|part|unità|unit|introduzione|introduction|esercizi|exercises?)\b/i.test(title) ? 4 : 0;
     const continuation = /\b(?:continua|continued|cont\.?|parte\s*\d+|part\s*\d+)\b/i.test(title) ? -4 : 0;
     const novelty = jaccard(titleTokens(title), titleTokens(previous)) < 0.15 ? 1 : 0;
-    const distance = Math.abs(index - idealEnd) / 12;
+    const distance = Math.abs(index - idealEnd) / 8;
     const score = marker + continuation + novelty - distance;
     if (score > bestScore) { best = index; bestScore = score; }
   }
@@ -366,7 +368,7 @@ export function buildCompactChapterOrganizerMessages(
       role: "system" as const,
       content: `Organize numbered candidate units into an exam-study curriculum. Return JSON only.
 Output exactly: {"title":"...","chapters":[{"title":"...","units":[1,2]}]}.
-Use each examinable unit at most once. Omit units that contain only schedules, teachers, textbooks, communications, or exam logistics. Merge exercises with their conceptual topic. Order prerequisites before dependent topics. Use concise, specific chapter titles in ${candidate.language}. Do not output descriptions, goals, scopes, or any other fields.
+Use each examinable unit at most once. Omit units that contain only schedules, teachers, textbooks, communications, or exam logistics. Merge exercises with their conceptual topic. Order prerequisites and foundational models before transformations, query languages, and exercises that depend on them. Use concise, specific chapter titles in ${candidate.language}. Do not output descriptions, goals, scopes, or any other fields.
 For a large course with at least 10 candidate units, produce 10-16 focused chapters; do not collapse distinct database topics into broad survey chapters.`,
     },
     { role: "user" as const, content: units },
@@ -409,6 +411,7 @@ export function parseCompactChapterPlan(
   for (let unit = 1; unit <= candidate.chapters.length; unit += 1) {
     if (used.has(unit)) continue;
     const missing = candidate.chapters[unit - 1]!;
+    if (isAdministrativeTitle(missing.title)) continue;
     const target = parsedChapters
       .map((chapter) => ({ chapter, distance: chapterDistance(missing, chapter) }))
       .sort((left, right) => left.distance - right.distance)[0]?.chapter;

@@ -6,15 +6,21 @@ export function StudyArtifactView({ artifact }: { artifact: StudyArtifact }) {
       <figcaption className="mb-4 text-sm font-semibold text-foreground">{artifact.title}</figcaption>
       {artifact.artifact === "flowchart" ? <Flowchart artifact={artifact} /> : null}
       {artifact.artifact === "hierarchy" ? <Hierarchy node={artifact.root} /> : null}
-      {artifact.artifact === "comparison" ? (
+      {artifact.artifact === "comparison" || artifact.artifact === "table" ? (
         <table className="w-full min-w-[520px] border-collapse text-left text-sm">
           <thead><tr>{artifact.columns.map((column) => <th key={column} className="border-b border-border p-2 font-semibold">{column}</th>)}</tr></thead>
-          <tbody>{artifact.rows.map((row, rowIndex) => <tr key={rowIndex}>{row.map((cell, index) => <td key={index} className="border-b border-border/60 p-2 align-top">{cell}</td>)}</tr>)}</tbody>
+          <tbody>{artifact.rows.map((row, rowIndex) => <tr key={rowIndex}>{row.map((cell, index) => <td key={index} className="border-b border-border/60 p-2 align-top"><ArtifactCell value={cell} /></td>)}</tr>)}</tbody>
         </table>
       ) : null}
       {artifact.artifact === "er-diagram" ? <ErDiagram artifact={artifact} /> : null}
     </figure>
   );
+}
+
+function ArtifactCell({ value }: { value: string }) {
+  return /^[□☐]$/.test(value.trim())
+    ? <input type="checkbox" aria-label="Mark as mastered" className="size-4 accent-primary" />
+    : value;
 }
 
 function Flowchart({ artifact }: { artifact: Extract<StudyArtifact, { artifact: "flowchart" }> }) {
@@ -42,10 +48,11 @@ function ErDiagram({ artifact }: { artifact: Extract<StudyArtifact, { artifact: 
       </div>)}
     </div>
     <div className="space-y-2">
-      {artifact.relationships.map((relationship, index) => <div key={`${relationship.from}-${relationship.to}-${index}`} className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 text-xs">
-        <span className="rounded-lg border bg-background px-2 py-1.5 text-right font-medium">{entities.get(relationship.from)?.name} <span className="text-muted-foreground">{relationship.fromCardinality}</span></span>
-        <span className="rounded-full border border-primary/25 bg-primary/10 px-3 py-1 text-center font-semibold">{relationship.label}</span>
-        <span className="rounded-lg border bg-background px-2 py-1.5 font-medium"><span className="text-muted-foreground">{relationship.toCardinality}</span> {entities.get(relationship.to)?.name}</span>
+      <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Relationships</div>
+      {artifact.relationships.map((relationship, index) => <div key={`${relationship.from}-${relationship.to}-${index}`} className="grid grid-cols-[minmax(0,1fr)_minmax(5rem,auto)_minmax(0,1fr)] items-center text-xs">
+        <span className="rounded-l-lg border bg-background px-2 py-2 text-right font-medium">{entities.get(relationship.from)?.name} <span className="text-muted-foreground">({relationship.fromCardinality ?? "?"})</span></span>
+        <span className="relative border-y border-primary/25 py-2 text-center font-semibold before:absolute before:left-0 before:right-0 before:top-1/2 before:-z-0 before:border-t before:border-primary/35"><span className="relative rounded bg-card px-2 text-primary">◆ {relationship.label} ◆</span></span>
+        <span className="rounded-r-lg border bg-background px-2 py-2 font-medium"><span className="text-muted-foreground">({relationship.toCardinality ?? "?"})</span> {entities.get(relationship.to)?.name}</span>
       </div>)}
     </div>
   </div>;

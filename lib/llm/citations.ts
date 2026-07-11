@@ -3,6 +3,8 @@ import type { SourceChunk } from "@/lib/search/types";
 const qualifiedCitationPattern = /\[Source\s+(\d+)\s*,\s*Slide\s+(\d+)\]/gi;
 const legacyCitationPattern = /\[Slide\s+(\d+)\]/gi;
 const rangedCitationPattern = /\[Source\s+(\d+)\s*,\s*Slides?\s+(\d+)\s*[-–—]\s*(\d+)\]/gi;
+const listedCitationPattern = /\[Source\s+(\d+)\s*,\s*Slides\s+([\d\s,]+)\]/gi;
+const compoundCitationPattern = /\[Source\s+(\d+)\s*,\s*Slides\s+([\d\s,–—-]+)\]/gi;
 const sourceOnlyCitationPattern = /\[Source\s+\d+\]/gi;
 const groupedCitationPattern =
   /\[((?:Source\s+\d+\s*,\s*Slide\s+\d+)(?:\s*;\s*Source\s+\d+\s*,\s*Slide\s+\d+)+)\]/gi;
@@ -18,7 +20,36 @@ export function repairModelCitations(
     ),
   );
 
-  const expandedRanges = content.replace(
+  const expandedCompounds = content.replace(
+    compoundCitationPattern,
+    (_citation, sourceNumberText: string, expression: string) => {
+      const sourceNumber = Number(sourceNumberText);
+      const slides = expression.split(",").flatMap((part) => {
+        const range = part.trim().match(/^(\d+)\s*[-–—]\s*(\d+)$/);
+        if (!range) return [Number(part.trim())];
+        const start = Number(range[1]);
+        const end = Number(range[2]);
+        return end >= start && end - start <= 20
+          ? Array.from({ length: end - start + 1 }, (_, offset) => start + offset)
+          : [];
+      });
+      return slides
+        .filter((slide) => Number.isInteger(slide) && validQualified.has(`source ${sourceNumber},${slide}`))
+        .map((slide) => `[Source ${sourceNumber}, Slide ${slide}]`)
+        .join(" ");
+    },
+  );
+  const expandedLists = expandedCompounds.replace(
+    listedCitationPattern,
+    (_citation, sourceNumberText: string, slidesText: string) =>
+      slidesText
+        .split(",")
+        .map(Number)
+        .filter((slide) => Number.isInteger(slide) && validQualified.has(`source ${Number(sourceNumberText)},${slide}`))
+        .map((slide) => `[Source ${Number(sourceNumberText)}, Slide ${slide}]`)
+        .join(" "),
+  );
+  const expandedRanges = expandedLists.replace(
     rangedCitationPattern,
     (_citation, sourceNumberText: string, startText: string, endText: string) => {
       const sourceNumber = Number(sourceNumberText);

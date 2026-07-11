@@ -50,6 +50,13 @@ export type StudyArtifact =
       rows: string[][];
     }
   | {
+      artifact: "table";
+      version: 1;
+      title: string;
+      columns: string[];
+      rows: string[][];
+    }
+  | {
       artifact: "er-diagram";
       version: 1;
       title: string;

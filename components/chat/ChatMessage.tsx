@@ -86,7 +86,9 @@ function AssistantContent({
             h1: ({ children }) => <h1 className="mb-2 mt-1 text-base font-semibold text-foreground">{children}</h1>,
             h2: ({ children }) => <h2 className="mb-2 mt-3 text-sm font-semibold text-foreground">{children}</h2>,
             h3: ({ children }) => <h3 className="mb-2 mt-3 text-sm font-semibold text-foreground">{children}</h3>,
-            code: ({ children }) => <code className="rounded bg-accent px-1 py-0.5 font-mono text-[0.85em] text-accent-foreground">{children}</code>,
+            code: ({ children, className }) => className?.includes("language-sql")
+              ? <SqlCode>{String(children).replace(/\n$/, "")}</SqlCode>
+              : <code className="rounded bg-accent px-1 py-0.5 font-mono text-[0.85em] text-accent-foreground">{children}</code>,
             pre: ({ children }) => <pre className="mb-3 overflow-x-auto rounded-xl border border-border bg-muted/65 p-3 text-sm leading-6 [&_code]:bg-transparent [&_code]:p-0 [&_code]:text-foreground">{children}</pre>,
             blockquote: ({ children }) => <blockquote className="mb-3 border-l-2 border-primary pl-3 text-muted-foreground">{children}</blockquote>,
             table: ({ children }) => <div className="my-4 overflow-x-auto rounded-xl border border-border"><table className="w-full min-w-[520px] border-collapse text-left text-sm">{children}</table></div>,
@@ -99,6 +101,24 @@ function AssistantContent({
         </ReactMarkdown>
     );
   });
+}
+
+const sqlTokenPattern = /(--[^\n]*|'(?:''|[^'])*'|\b(?:SELECT|FROM|WHERE|JOIN|INNER|LEFT|RIGHT|FULL|OUTER|ON|AS|AND|OR|NOT|NULL|IS|IN|EXISTS|GROUP|BY|ORDER|HAVING|LIMIT|OFFSET|UNION|ALL|DISTINCT|INSERT|INTO|VALUES|UPDATE|SET|DELETE|CREATE|ALTER|DROP|TABLE|VIEW|PRIMARY|FOREIGN|KEY|REFERENCES|CONSTRAINT|INTEGER|INT|VARCHAR|CHAR|DATE|COUNT|SUM|AVG|MIN|MAX|CASE|WHEN|THEN|ELSE|END)\b|\b\d+(?:\.\d+)?\b)/gi;
+
+function SqlCode({ children }: { children: string }) {
+  return <code className="font-mono text-[0.85em]">{children.split(sqlTokenPattern).map((token, index) => {
+    if (!token) return null;
+    const className = token.startsWith("--")
+      ? "text-muted-foreground italic"
+      : token.startsWith("'")
+        ? "text-amber-700 dark:text-amber-300"
+        : /^\d/.test(token)
+          ? "text-sky-700 dark:text-sky-300"
+          : /^(SELECT|FROM|WHERE|JOIN|INNER|LEFT|RIGHT|FULL|OUTER|ON|AS|AND|OR|NOT|NULL|IS|IN|EXISTS|GROUP|BY|ORDER|HAVING|LIMIT|OFFSET|UNION|ALL|DISTINCT|INSERT|INTO|VALUES|UPDATE|SET|DELETE|CREATE|ALTER|DROP|TABLE|VIEW|PRIMARY|FOREIGN|KEY|REFERENCES|CONSTRAINT|INTEGER|INT|VARCHAR|CHAR|DATE|COUNT|SUM|AVG|MIN|MAX|CASE|WHEN|THEN|ELSE|END)$/i.test(token)
+            ? "font-semibold text-primary"
+            : undefined;
+    return <span key={index} className={className}>{token}</span>;
+  })}</code>;
 }
 
 function renderMarkdownChildren(

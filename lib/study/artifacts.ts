@@ -19,7 +19,7 @@ export function parseStudyContent(content: string): StudyContentPart[] {
     const index = match.index ?? 0;
     if (index > cursor) parts.push({ type: "markdown", content: content.slice(cursor, index) });
     try {
-      parts.push({ type: "artifact", artifact: validateStudyArtifact(JSON.parse(match[1]!)) });
+      parts.push({ type: "artifact", artifact: validateStudyArtifact(parseArtifactJson(match[1]!)) });
     } catch (error) {
       parts.push({
         type: "artifact",
@@ -90,8 +90,8 @@ function findBalancedJsonEnd(content: string, start: number): number {
 export function normalizeArtifactFences(content: string): string {
   return content.replace(/```json\s*\n([\s\S]*?)```/gi, (block, body: string) => {
     try {
-      const parsed = JSON.parse(body) as { artifact?: unknown };
-      return parsed?.artifact === "flowchart" || parsed?.artifact === "hierarchy" || parsed?.artifact === "comparison" || parsed?.artifact === "er-diagram"
+      const parsed = parseArtifactJson(body) as { artifact?: unknown };
+      return parsed?.artifact === "flowchart" || parsed?.artifact === "hierarchy" || parsed?.artifact === "comparison" || parsed?.artifact === "table" || parsed?.artifact === "er-diagram"
         ? `\`\`\`agn-artifact\n${body.trim()}\n\`\`\``
         : block;
     } catch {
@@ -141,7 +141,7 @@ export function validateStudyArtifact(value: unknown): StudyArtifact {
     return { artifact: "hierarchy", version: 1, title, root: parseNode(item.root) };
   }
 
-  if (item.artifact === "comparison") {
+  if (item.artifact === "comparison" || item.artifact === "table") {
     if (!Array.isArray(item.columns) || !Array.isArray(item.rows) || item.rows.length > maxRows) {
       throw new Error("Invalid or oversized comparison table.");
     }
@@ -151,7 +151,7 @@ export function validateStudyArtifact(value: unknown): StudyArtifact {
       if (!Array.isArray(row) || row.length !== columns.length) throw new Error("Comparison row width is invalid.");
       return row.map((cell) => text(cell));
     });
-    return { artifact: "comparison", version: 1, title, columns, rows };
+    return { artifact: item.artifact, version: 1, title, columns, rows };
   }
 
   if (item.artifact === "er-diagram") {
@@ -187,6 +187,23 @@ export function validateStudyArtifact(value: unknown): StudyArtifact {
   }
 
   throw new Error("Unknown study artifact type.");
+}
+
+/** Recover the small set of JSON punctuation mistakes text models commonly make. */
+function parseArtifactJson(value: string): unknown {
+  try {
+    return JSON.parse(value);
+  } catch (originalError) {
+    const repaired = value
+      .replace(/,\s*([}\]])/g, "$1")
+      .replace(/([}\]])\s*(?=[{\[])/g, "$1,")
+      .replace(/([}\]\"])\s*(?=\"[^\"]+\"\s*:)/g, "$1,");
+    try {
+      return JSON.parse(repaired);
+    } catch {
+      throw originalError;
+    }
+  }
 }
 
 function object(value: unknown): Record<string, unknown> {

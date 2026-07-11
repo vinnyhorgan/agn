@@ -68,6 +68,16 @@ describe("study artifacts", () => {
     expect(parts[0]?.artifact?.artifact).toBe("comparison");
   });
 
+  it("supports ordinary structured tables separately from comparisons", () => {
+    const parts = parseStudyContent('```agn-artifact\n{"artifact":"table","version":1,"title":"Facts","columns":["Name","Value"],"rows":[["A","1"]]}\n```');
+    expect(parts[0]?.artifact?.artifact).toBe("table");
+  });
+
+  it("repairs common missing commas in artifact JSON", () => {
+    const parts = parseStudyContent('```agn-artifact\n{"artifact":"hierarchy","version":1,"title":"Levels","root":{"label":"External" "children":[{"label":"Logical"}]}}\n```');
+    expect(parts[0]?.artifact?.artifact).toBe("hierarchy");
+  });
+
   it("rejects executable and dangling artifact structures", () => {
     expect(() => validateStudyArtifact({ artifact: "html", version: 1, title: "x", html: "<script>" })).toThrow("Unknown");
     expect(() => validateStudyArtifact({ artifact: "flowchart", version: 1, title: "x", nodes: [{ id: "a", label: "A" }], edges: [{ from: "a", to: "missing" }] })).toThrow("unknown node");
