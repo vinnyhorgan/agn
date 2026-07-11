@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 
 import {
+  DEEPINFRA_MODEL,
+  DEEPINFRA_STRUCTURED_MODEL,
   DeepInfraAuthenticationError,
   createDeepInfraChatCompletion,
   createDeepInfraChatCompletionStream,
@@ -25,6 +27,7 @@ export async function POST(request: Request) {
   const reasoningEffort = readReasoningEffort(payload);
   const maxTokens = readMaxTokens(payload);
   const responseFormat = readResponseFormat(payload);
+  const model = readModel(payload);
 
   if (!apiKey) {
     return NextResponse.json(
@@ -49,6 +52,7 @@ export async function POST(request: Request) {
         reasoningEffort,
         maxTokens,
         responseFormat,
+        model,
       });
 
       return new Response(stream, {
@@ -66,6 +70,7 @@ export async function POST(request: Request) {
       reasoningEffort,
       maxTokens,
       responseFormat,
+      model,
     });
 
     return NextResponse.json(result);
@@ -78,6 +83,13 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ error: message }, { status });
   }
+}
+
+function readModel(payload: unknown) {
+  if (payload && typeof payload === "object" && "model" in payload && payload.model === DEEPINFRA_STRUCTURED_MODEL) {
+    return DEEPINFRA_STRUCTURED_MODEL;
+  }
+  return DEEPINFRA_MODEL;
 }
 
 function readResponseFormat(payload: unknown): "json_object" | undefined {

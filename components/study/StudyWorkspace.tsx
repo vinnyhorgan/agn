@@ -6,16 +6,17 @@ import { useEffect, useMemo, useState } from "react";
 import { ChatMessage } from "@/components/chat/ChatMessage";
 import { Button } from "@/components/ui/button";
 import { repairModelCitations } from "@/lib/llm/citations";
-import { streamDeepInfraChatCompletionViaRoute } from "@/lib/llm/openAiCompatible";
+import { DEEPINFRA_STRUCTURED_MODEL, streamDeepInfraChatCompletionViaRoute } from "@/lib/llm/openAiCompatible";
 import type { SourceChunk } from "@/lib/search/types";
 import {
   buildChapterPlannerMessages,
   buildChapterPlanRepairMessages,
-  buildChapterRefinementMessages,
+  buildCompactChapterOrganizerMessages,
   chunksForChapter,
   createDeterministicChapterPlan,
   createLibraryKey,
   parseChapterPlan,
+  parseCompactChapterPlan,
 } from "@/lib/study/chapterPlanner";
 import { buildStudyPageMessages, selectStudyPageEvidence } from "@/lib/study/studyPage";
 import type { StudyChapter, StudyChapterPlan, StudyPage } from "@/lib/study/types";
@@ -83,14 +84,15 @@ export function StudyWorkspace({
     try {
       const response = await streamDeepInfraChatCompletionViaRoute({
         settings: { apiKey },
-        messages: buildChapterRefinementMessages(candidatePlan, chunks),
+        messages: buildCompactChapterOrganizerMessages(candidatePlan, chunks),
         onDelta() {},
         reasoningEffort: "low",
-        maxTokens: 3_500,
+        maxTokens: 1_500,
         responseFormat: "json_object",
+        model: DEEPINFRA_STRUCTURED_MODEL,
         signal: controller.signal,
       });
-      const nextPlan = await parseOrRepairPlan(response.content, controller.signal);
+      const nextPlan = await parseOrRepairCompactPlan(response.content, candidatePlan, controller.signal);
       setPlan(nextPlan); setPages({}); setSelectedId(nextPlan.chapters[0]?.id);
       persist(storageKey, nextPlan, {});
     } catch (cause) {
@@ -114,15 +116,18 @@ export function StudyWorkspace({
       const response = await streamDeepInfraChatCompletionViaRoute({
         settings: { apiKey },
         messages: plan
-          ? buildChapterRefinementMessages(plan, chunks)
+          ? buildCompactChapterOrganizerMessages(plan, chunks)
           : buildChapterPlannerMessages(chunks, inferLanguage(chunks)),
         onDelta() {},
         reasoningEffort: "low",
-        maxTokens: 3_500,
+        maxTokens: 1_500,
         responseFormat: "json_object",
+        model: DEEPINFRA_STRUCTURED_MODEL,
         signal: controller.signal,
       });
-      const nextPlan = await parseOrRepairPlan(response.content, controller.signal);
+      const nextPlan = plan
+        ? await parseOrRepairCompactPlan(response.content, plan, controller.signal)
+        : await parseOrRepairPlan(response.content, controller.signal);
       setPlan(nextPlan); setPages({}); setSelectedId(nextPlan.chapters[0]?.id);
       persist(storageKey, nextPlan, {});
     } catch (cause) {
@@ -142,6 +147,7 @@ export function StudyWorkspace({
         reasoningEffort: "low",
         maxTokens: 3_500,
         responseFormat: "json_object",
+        model: DEEPINFRA_STRUCTURED_MODEL,
         signal,
       });
       setError(undefined);
@@ -150,6 +156,21 @@ export function StudyWorkspace({
       } catch {
         throw new Error("The provider returned invalid curriculum data twice. Your existing study data was not changed; please retry.");
       }
+    }
+  }
+
+  async function parseOrRepairCompactPlan(content: string, candidate: StudyChapterPlan, signal?: AbortSignal) {
+    try {
+      return parseCompactChapterPlan(content, candidate, chunks);
+    } catch {
+      setError("The model returned malformed curriculum data. Repairing it now…");
+      const repaired = await streamDeepInfraChatCompletionViaRoute({
+        settings: { apiKey }, messages: buildChapterPlanRepairMessages(content), onDelta() {},
+        reasoningEffort: "low", maxTokens: 1_500, responseFormat: "json_object",
+        model: DEEPINFRA_STRUCTURED_MODEL, signal,
+      });
+      setError(undefined);
+      return parseCompactChapterPlan(repaired.content, candidate, chunks);
     }
   }
 

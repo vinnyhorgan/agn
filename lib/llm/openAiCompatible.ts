@@ -8,6 +8,8 @@ import { validateProviderMessages } from "@/lib/llm/providerCapabilities";
 
 export const DEEPINFRA_BASE_URL = "https://api.deepinfra.com/v1/openai";
 export const DEEPINFRA_MODEL = "deepseek-ai/DeepSeek-V4-Flash";
+export const DEEPINFRA_STRUCTURED_MODEL = "Qwen/Qwen3-235B-A22B-Instruct-2507";
+export type DeepInfraModel = typeof DEEPINFRA_MODEL | typeof DEEPINFRA_STRUCTURED_MODEL;
 
 interface OpenAiCompatibleResponse {
   choices?: Array<{
@@ -41,12 +43,14 @@ export async function createDeepInfraChatCompletion({
   reasoningEffort = "medium",
   maxTokens,
   responseFormat,
+  model = DEEPINFRA_MODEL,
 }: {
   settings: DeepInfraSettings;
   messages: LlmMessage[];
   reasoningEffort?: "low" | "medium" | "high";
   maxTokens?: number;
   responseFormat?: "json_object";
+  model?: DeepInfraModel;
 }): Promise<ChatCompletionResult> {
   const apiKey = settings.apiKey.trim();
 
@@ -57,7 +61,7 @@ export async function createDeepInfraChatCompletion({
   const validatedMessages = requireValidMessages(messages);
 
   const body: ChatCompletionRequest = {
-    model: DEEPINFRA_MODEL,
+    model,
     messages: validatedMessages,
     temperature: 0.2,
     reasoning_effort: reasoningEffort,
@@ -108,6 +112,7 @@ export async function createDeepInfraChatCompletionStream({
   reasoningEffort = "medium",
   maxTokens,
   responseFormat,
+  model = DEEPINFRA_MODEL,
 }: {
   settings: DeepInfraSettings;
   messages: LlmMessage[];
@@ -115,6 +120,7 @@ export async function createDeepInfraChatCompletionStream({
   reasoningEffort?: "low" | "medium" | "high";
   maxTokens?: number;
   responseFormat?: "json_object";
+  model?: DeepInfraModel;
 }): Promise<ReadableStream<Uint8Array>> {
   const apiKey = settings.apiKey.trim();
 
@@ -125,7 +131,7 @@ export async function createDeepInfraChatCompletionStream({
   const validatedMessages = requireValidMessages(messages);
 
   const body: ChatCompletionRequest = {
-    model: DEEPINFRA_MODEL,
+    model,
     messages: validatedMessages,
     temperature: 0.2,
     reasoning_effort: reasoningEffort,
@@ -183,6 +189,7 @@ export async function streamDeepInfraChatCompletionViaRoute({
   reasoningEffort = "medium",
   maxTokens,
   responseFormat,
+  model,
 }: {
   settings: DeepInfraSettings;
   messages: LlmMessage[];
@@ -191,6 +198,7 @@ export async function streamDeepInfraChatCompletionViaRoute({
   reasoningEffort?: "low" | "medium" | "high";
   maxTokens?: number;
   responseFormat?: "json_object";
+  model?: DeepInfraModel;
 }): Promise<ChatCompletionResult> {
   const apiKey = settings.apiKey.trim();
 
@@ -203,7 +211,7 @@ export async function streamDeepInfraChatCompletionViaRoute({
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ apiKey, messages, stream: true, reasoningEffort, maxTokens, responseFormat }),
+    body: JSON.stringify({ apiKey, messages, stream: true, reasoningEffort, maxTokens, responseFormat, model }),
     signal,
   });
 

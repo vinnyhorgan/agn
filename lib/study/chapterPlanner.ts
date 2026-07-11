@@ -351,6 +351,109 @@ export function buildChapterPlanRepairMessages(content: string) {
   ];
 }
 
+export function buildCompactChapterOrganizerMessages(
+  candidate: StudyChapterPlan,
+  chunks: SourceChunk[],
+) {
+  const units = candidate.chapters.map((chapter, index) => {
+    const unitChunks = chunksForChapter(chunks, chapter);
+    const sources = [...new Set(unitChunks.map((chunk) => chunk.sourceTitle))].slice(0, 6);
+    const slideTitles = [...new Set(unitChunks.map((chunk) => chunk.slideTitle).filter(Boolean))].slice(0, 8);
+    return `${index + 1}. ${chapter.title}\nSources: ${sources.join("; ")}\nTopics: ${slideTitles.join("; ")}`;
+  }).join("\n\n");
+  return [
+    {
+      role: "system" as const,
+      content: `Organize numbered candidate units into an exam-study curriculum. Return JSON only.
+Output exactly: {"title":"...","chapters":[{"title":"...","units":[1,2]}]}.
+Use each examinable unit at most once. Omit units that contain only schedules, teachers, textbooks, communications, or exam logistics. Merge exercises with their conceptual topic. Order prerequisites before dependent topics. Use concise, specific chapter titles in ${candidate.language}. Do not output descriptions, goals, scopes, or any other fields.
+For a large course with at least 10 candidate units, produce 10-16 focused chapters; do not collapse distinct database topics into broad survey chapters.`,
+    },
+    { role: "user" as const, content: units },
+  ];
+}
+
+export function parseCompactChapterPlan(
+  content: string,
+  candidate: StudyChapterPlan,
+  chunks: SourceChunk[],
+): StudyChapterPlan {
+  const parsed = JSON.parse(extractJson(content)) as Record<string, unknown>;
+  if (!Array.isArray(parsed.chapters) || parsed.chapters.length === 0 || parsed.chapters.length > maxChapters) {
+    throw new Error("The AI organizer returned an invalid chapter list.");
+  }
+  const used = new Set<number>();
+  const parsedChapters = parsed.chapters.flatMap((value, index): StudyChapter[] => {
+    if (!value || typeof value !== "object") throw new Error("The AI organizer returned an invalid chapter.");
+    const record = value as Record<string, unknown>;
+    if (!Array.isArray(record.units) || record.units.length === 0) throw new Error("An AI chapter has no candidate units.");
+    const units = record.units.map(Number).filter((unit) => {
+      if (!Number.isInteger(unit) || unit < 1 || unit > candidate.chapters.length || used.has(unit)) return false;
+      used.add(unit);
+      return true;
+    });
+    if (units.length === 0) return [];
+    const members = units.map((unit) => candidate.chapters[unit - 1]!);
+    const scopes = members.flatMap((member) => member.scopes);
+    const slideCount = chunks.filter((chunk) => scopes.some((scope) => scope.deckId === chunk.deckId && chunk.slideNumber >= scope.slideStart && chunk.slideNumber <= scope.slideEnd)).length;
+    return [{
+      id: `chapter-${index + 1}`,
+      title: readText(record.title, `Chapter ${index + 1}`),
+      description: candidate.language.toLowerCase().startsWith("ital")
+        ? `Studia e collega i concetti di questa unità (${slideCount} sezioni indicizzate).`
+        : `Study and connect the concepts in this unit (${slideCount} indexed sections).`,
+      goals: [...new Set(members.flatMap((member) => member.goals))].slice(0, maxGoals),
+      scopes,
+    }];
+  });
+  for (let unit = 1; unit <= candidate.chapters.length; unit += 1) {
+    if (used.has(unit)) continue;
+    const missing = candidate.chapters[unit - 1]!;
+    const target = parsedChapters
+      .map((chapter) => ({ chapter, distance: chapterDistance(missing, chapter) }))
+      .sort((left, right) => left.distance - right.distance)[0]?.chapter;
+    if (target) {
+      target.scopes.push(...missing.scopes);
+      target.goals = [...new Set([...target.goals, ...missing.goals])].slice(0, maxGoals);
+    } else {
+      parsedChapters.push({ ...missing, scopes: [...missing.scopes], goals: [...missing.goals], id: "chapter-1" });
+    }
+  }
+  const chapters = removeAdministrativeChapters(parsedChapters);
+  ensureNoOverlappingScopes(chapters);
+  return {
+    version: 1,
+    libraryKey: candidate.libraryKey,
+    title: readText(parsed.title, candidate.title),
+    language: candidate.language,
+    chapters,
+  };
+}
+
+function chapterDistance(left: StudyChapter, right: StudyChapter): number {
+  let best = Number.POSITIVE_INFINITY;
+  for (const a of left.scopes) for (const b of right.scopes) {
+    if (a.deckId === b.deckId) best = Math.min(best, Math.abs(a.slideStart - b.slideStart));
+  }
+  return best;
+}
+
+function removeAdministrativeChapters(chapters: StudyChapter[]): StudyChapter[] {
+  const result = chapters.map((chapter) => ({ ...chapter, scopes: [...chapter.scopes], goals: [...chapter.goals] }));
+  for (let index = 0; index < result.length; index += 1) {
+    const chapter = result[index]!;
+    if (!isAdministrativeTitle(chapter.title) || result.length === 1) continue;
+    const target = result[index + 1] ?? result[index - 1]!;
+    target.scopes = index + 1 < result.length
+      ? [...chapter.scopes, ...target.scopes]
+      : [...target.scopes, ...chapter.scopes];
+    target.goals = [...new Set([...target.goals, ...chapter.goals])].slice(0, maxGoals);
+    result.splice(index, 1);
+    index -= 1;
+  }
+  return result.map((chapter, index) => ({ ...chapter, id: `chapter-${index + 1}` }));
+}
+
 export function parseChapterPlan(
   content: string,
   chunks: SourceChunk[],
