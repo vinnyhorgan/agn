@@ -22,6 +22,8 @@ export async function POST(request: Request) {
   const apiKey = readApiKey(payload);
   const messageValidation = readMessages(payload);
   const shouldStream = readShouldStream(payload);
+  const reasoningEffort = readReasoningEffort(payload);
+  const maxTokens = readMaxTokens(payload);
 
   if (!apiKey) {
     return NextResponse.json(
@@ -43,6 +45,8 @@ export async function POST(request: Request) {
         settings: { apiKey },
         messages: messageValidation.messages,
         signal: request.signal,
+        reasoningEffort,
+        maxTokens,
       });
 
       return new Response(stream, {
@@ -57,6 +61,8 @@ export async function POST(request: Request) {
     const result = await createDeepInfraChatCompletion({
       settings: { apiKey },
       messages: messageValidation.messages,
+      reasoningEffort,
+      maxTokens,
     });
 
     return NextResponse.json(result);
@@ -69,6 +75,22 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ error: message }, { status });
   }
+}
+
+function readReasoningEffort(payload: unknown): "low" | "medium" | "high" {
+  if (payload && typeof payload === "object" && "reasoningEffort" in payload) {
+    const value = payload.reasoningEffort;
+    if (value === "low" || value === "medium" || value === "high") return value;
+  }
+  return "medium";
+}
+
+function readMaxTokens(payload: unknown): number | undefined {
+  if (!payload || typeof payload !== "object" || !("maxTokens" in payload)) return undefined;
+  const value = payload.maxTokens;
+  return Number.isInteger(value) && Number(value) >= 256 && Number(value) <= 16_000
+    ? Number(value)
+    : undefined;
 }
 
 function readShouldStream(payload: unknown): boolean {

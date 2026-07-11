@@ -38,9 +38,13 @@ export class DeepInfraAuthenticationError extends Error {
 export async function createDeepInfraChatCompletion({
   settings,
   messages,
+  reasoningEffort = "medium",
+  maxTokens,
 }: {
   settings: DeepInfraSettings;
   messages: LlmMessage[];
+  reasoningEffort?: "low" | "medium" | "high";
+  maxTokens?: number;
 }): Promise<ChatCompletionResult> {
   const apiKey = settings.apiKey.trim();
 
@@ -54,7 +58,8 @@ export async function createDeepInfraChatCompletion({
     model: DEEPINFRA_MODEL,
     messages: validatedMessages,
     temperature: 0.2,
-    reasoning_effort: "medium",
+    reasoning_effort: reasoningEffort,
+    ...(maxTokens ? { max_tokens: maxTokens } : {}),
   };
 
   const response = await fetch(`${DEEPINFRA_BASE_URL}/chat/completions`, {
@@ -97,10 +102,14 @@ export async function createDeepInfraChatCompletionStream({
   settings,
   messages,
   signal,
+  reasoningEffort = "medium",
+  maxTokens,
 }: {
   settings: DeepInfraSettings;
   messages: LlmMessage[];
   signal?: AbortSignal;
+  reasoningEffort?: "low" | "medium" | "high";
+  maxTokens?: number;
 }): Promise<ReadableStream<Uint8Array>> {
   const apiKey = settings.apiKey.trim();
 
@@ -114,7 +123,8 @@ export async function createDeepInfraChatCompletionStream({
     model: DEEPINFRA_MODEL,
     messages: validatedMessages,
     temperature: 0.2,
-    reasoning_effort: "medium",
+    reasoning_effort: reasoningEffort,
+    ...(maxTokens ? { max_tokens: maxTokens } : {}),
     stream: true,
   };
   const response = await fetch(`${DEEPINFRA_BASE_URL}/chat/completions`, {
@@ -164,11 +174,15 @@ export async function streamDeepInfraChatCompletionViaRoute({
   messages,
   onDelta,
   signal,
+  reasoningEffort = "medium",
+  maxTokens,
 }: {
   settings: DeepInfraSettings;
   messages: LlmMessage[];
   onDelta: (delta: string) => void;
   signal?: AbortSignal;
+  reasoningEffort?: "low" | "medium" | "high";
+  maxTokens?: number;
 }): Promise<ChatCompletionResult> {
   const apiKey = settings.apiKey.trim();
 
@@ -181,7 +195,7 @@ export async function streamDeepInfraChatCompletionViaRoute({
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ apiKey, messages, stream: true }),
+    body: JSON.stringify({ apiKey, messages, stream: true, reasoningEffort, maxTokens }),
     signal,
   });
 

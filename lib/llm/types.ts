@@ -37,6 +37,7 @@ export interface ChatCompletionRequest {
   messages: LlmMessage[];
   temperature: number;
   reasoning_effort?: "low" | "medium" | "high";
+  max_tokens?: number;
   stream?: boolean;
 }
 

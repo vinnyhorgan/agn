@@ -1,6 +1,8 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
+import { StudyArtifactView } from "@/components/study/StudyArtifactView";
+import { parseStudyContent } from "@/lib/study/artifacts";
 import { cn } from "@/lib/utils";
 import React from "react";
 import ReactMarkdown from "react-markdown";
@@ -39,7 +41,36 @@ export function ChatMessage({
         {role === "user" ? "You" : "AGN"}
       </div>
       {role === "assistant" ? (
+        <AssistantContent
+          content={content}
+          validCitations={validCitations}
+          onCitationClick={onCitationClick}
+        />
+      ) : (
+        <div className="whitespace-pre-wrap text-sm leading-6 text-foreground">{content}</div>
+      )}
+    </div>
+  );
+}
+
+function AssistantContent({
+  content,
+  validCitations,
+  onCitationClick,
+}: Omit<ChatMessageProps, "role">) {
+  return parseStudyContent(content).map((part, index) => {
+    if (part.type === "artifact") {
+      return part.artifact ? (
+        <StudyArtifactView key={index} artifact={part.artifact} />
+      ) : (
+        <div key={index} className="my-3 rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+          Diagram unavailable: {part.error}
+        </div>
+      );
+    }
+    return (
         <ReactMarkdown
+          key={index}
           remarkPlugins={[remarkGfm]}
           components={{
             p: ({ children }) => (
@@ -61,13 +92,10 @@ export function ChatMessage({
             hr: () => null,
           }}
         >
-          {content}
+          {part.content ?? ""}
         </ReactMarkdown>
-      ) : (
-        <div className="whitespace-pre-wrap text-sm leading-6 text-foreground">{content}</div>
-      )}
-    </div>
-  );
+    );
+  });
 }
 
 function renderMarkdownChildren(

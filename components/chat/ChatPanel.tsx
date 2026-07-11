@@ -1,10 +1,11 @@
 "use client";
 
-import { AlertCircle, Check, Copy, Send, Square, Trash2 } from "lucide-react";
+import { AlertCircle, BookOpen, Check, Copy, Send, Square, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { ChatMessage } from "@/components/chat/ChatMessage";
 import { ProviderSettings } from "@/components/chat/ProviderSettings";
+import { StudyWorkspace } from "@/components/study/StudyWorkspace";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -25,6 +26,8 @@ import {
   retrieveSourceChunksWithDiagnostics,
 } from "@/lib/search/retrieveSources";
 import type { SourceChunk } from "@/lib/search/types";
+import { chunksForChapter } from "@/lib/study/chapterPlanner";
+import type { StudyChapter } from "@/lib/study/types";
 import { cn } from "@/lib/utils";
 import { repairWebCitations } from "@/lib/web/citations";
 import {
@@ -113,6 +116,8 @@ export function ChatPanel({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string>();
   const [didCopyChat, setDidCopyChat] = useState(false);
+  const [studyOpen, setStudyOpen] = useState(false);
+  const [activeChapter, setActiveChapter] = useState<StudyChapter>();
   const abortControllerRef = useRef<AbortController | undefined>(undefined);
   const conversationEndRef = useRef<HTMLDivElement>(null);
   const turns = sessionTurns ?? storedTurns;
@@ -146,8 +151,11 @@ export function ChatPanel({
     const currentTurns = turns;
     const turnStartedAt = performance.now();
     const retrievalStartedAt = performance.now();
+    const retrievalCorpus = activeChapter
+      ? chunksForChapter(sourceChunks, activeChapter)
+      : sourceChunks;
     const retrieval = retrieveSourceChunksWithDiagnostics({
-      chunks: sourceChunks,
+      chunks: retrievalCorpus,
       query: trimmedQuestion,
       previousSources: currentTurns.at(-1)?.sources,
     });
@@ -399,6 +407,16 @@ export function ChatPanel({
             }
             onTavilyApiKeyChange={writeStoredTavilyApiKey}
           />
+          <Button
+            type="button"
+            variant={activeChapter ? "secondary" : "ghost"}
+            size="icon-sm"
+            title={activeChapter ? `Studying: ${activeChapter.title}` : "Study chapters"}
+            aria-label="Study chapters"
+            onClick={() => setStudyOpen(true)}
+          >
+            <BookOpen aria-hidden="true" />
+          </Button>
           {turns.length > 0 ? (
             <>
               <Button
@@ -500,6 +518,24 @@ export function ChatPanel({
           </Button>
         </form>
       </footer>
+      <StudyWorkspace
+        open={studyOpen}
+        apiKey={settings.apiKey}
+        chunks={sourceChunks}
+        activeChapterId={activeChapter?.id}
+        onClose={() => setStudyOpen(false)}
+        onActivateChapter={(chapter) => {
+          setActiveChapter(chapter);
+          setStudyOpen(false);
+        }}
+        onStartTest={(chapter) => {
+          setActiveChapter(chapter);
+          setQuestion(
+            `Test me thoroughly on “${chapter.title}”. Ask one question at a time, wait for my answer, evaluate it precisely against the uploaded sources, and adapt the next question to my weaknesses. Do not reveal later answers early.`,
+          );
+          setStudyOpen(false);
+        }}
+      />
     </section>
   );
 }
