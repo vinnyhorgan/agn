@@ -85,6 +85,7 @@ describe("chat interactions", () => {
     await user.click(screen.getByRole("button", { name: "Study chapters" }));
     await user.click(screen.getByRole("button", { name: "Use basic outline" }));
     expect(screen.getAllByText(/Relational model/).length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "Generate all papers" })).toBeTruthy();
     expect(fetchMock).not.toHaveBeenCalled();
     expect(Object.keys(window.localStorage).some((key) => key.startsWith("agn.study."))).toBe(true);
   });
