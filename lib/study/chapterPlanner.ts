@@ -235,12 +235,14 @@ function absorbTinySegments(segments: ChapterSegment[]): ChapterSegment[] {
 function extractConceptLabels(slides: SlideOutlineItem[], sourceTitles: string[]): string[] {
   const counts = new Map<string, { count: number; display: string }>();
   for (const slide of slides) {
+    if (isAdministrativeTitle(`${slide.sourceTitle} ${slide.title}`)) continue;
     for (const token of titleTokens(slide.title)) {
       const current = counts.get(token);
       counts.set(token, { count: (current?.count ?? 0) + 1, display: token });
     }
   }
   for (const sourceTitle of sourceTitles) {
+    if (isAdministrativeTitle(sourceTitle)) continue;
     for (const token of titleTokens(sourceTitle)) {
       const current = counts.get(token);
       counts.set(token, { count: (current?.count ?? 0) + 5, display: token });
@@ -250,6 +252,10 @@ function extractConceptLabels(slides: SlideOutlineItem[], sourceTitles: string[]
     .sort((left, right) => right.count - left.count || left.display.localeCompare(right.display))
     .slice(0, 3)
     .map(({ display }) => display.charAt(0).toLocaleUpperCase() + display.slice(1));
+}
+
+function isAdministrativeTitle(value: string): boolean {
+  return /\b(?:organizzazione del corso|libro di testo|calendario|turni e docenti|orario|ricevimento|comunicazioni|syllabus|course organization|office hours|textbook)\b/i.test(value);
 }
 
 function cleanSourceTitle(title: string): string {

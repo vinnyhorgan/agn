@@ -71,6 +71,25 @@ describe("chat interactions", () => {
     expect(Object.keys(window.localStorage).some((key) => key.startsWith("agn.study."))).toBe(true);
   });
 
+  it("keeps a usable local curriculum when AI organization fails", async () => {
+    window.localStorage.setItem("agn.deepInfra.apiKey", "test-key");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("", { status: 504 })));
+    const source: SourceChunk = {
+      id: "deck:slide-1-chunk-1", deckId: "deck", deckTitle: "Database course",
+      sourceLabel: "Source 1", sourceTitle: "Relational model", sourcePath: "relational.pdf",
+      sourceMediaType: "pdf", sourceLanguage: "it", slideNumber: 1, sourceSlideNumber: 1,
+      slideTitle: "Chiavi candidate", text: "Una chiave candidata è una superchiave minimale.",
+      slideImagePath: "slides/0001.webp",
+    };
+    const user = userEvent.setup();
+    render(<ChatPanel sourceChunks={[source]} sourceCount={1} />);
+    await user.click(screen.getByRole("button", { name: "Study chapters" }));
+    await user.click(screen.getByRole("button", { name: "Organize chapters with AI" }));
+    await waitFor(() => expect(screen.getByText(/kept the complete local draft/)).toBeTruthy());
+    expect(screen.getAllByText(/Relational model/).length).toBeGreaterThan(0);
+    expect(Object.keys(window.localStorage).some((key) => key.startsWith("agn.study.v3."))).toBe(true);
+  });
+
   it("loads and persists the DeepInfra key in localStorage", async () => {
     window.localStorage.setItem("agn.deepInfra.apiKey", "saved-key");
     const user = userEvent.setup();
