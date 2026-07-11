@@ -83,9 +83,9 @@ function AssistantContent({
             ),
             ul: ({ children }) => <ul className="mb-3 list-disc space-y-1 pl-5 text-sm leading-6 text-foreground/90 marker:text-primary">{children}</ul>,
             ol: ({ children }) => <ol className="mb-3 list-decimal space-y-1 pl-5 text-sm leading-6 text-foreground/90 marker:text-primary">{children}</ol>,
-            h1: ({ children }) => <h1 className="mb-2 mt-1 text-base font-semibold text-foreground">{children}</h1>,
-            h2: ({ children }) => <h2 className="mb-2 mt-3 text-sm font-semibold text-foreground">{children}</h2>,
-            h3: ({ children }) => <h3 className="mb-2 mt-3 text-sm font-semibold text-foreground">{children}</h3>,
+            h1: ({ children }) => <h1 className="mb-2 mt-1 text-base font-semibold text-foreground">{renderMarkdownChildren(children, validCitations, onCitationClick)}</h1>,
+            h2: ({ children }) => <h2 className="mb-2 mt-3 text-sm font-semibold text-foreground">{renderMarkdownChildren(children, validCitations, onCitationClick)}</h2>,
+            h3: ({ children }) => <h3 className="mb-2 mt-3 text-sm font-semibold text-foreground">{renderMarkdownChildren(children, validCitations, onCitationClick)}</h3>,
             code: ({ children, className }) => className?.includes("language-sql")
               ? <SqlCode>{String(children).replace(/\n$/, "")}</SqlCode>
               : <code className="rounded bg-accent px-1 py-0.5 font-mono text-[0.85em] text-accent-foreground">{children}</code>,

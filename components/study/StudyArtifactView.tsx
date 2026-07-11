@@ -35,7 +35,21 @@ function Flowchart({ artifact }: { artifact: Extract<StudyArtifact, { artifact: 
 }
 
 function Hierarchy({ node }: { node: StudyHierarchyNode }) {
-  return <ul className="ml-2 border-l-2 border-primary/20 pl-4 text-sm"><li className="py-1"><span className="inline-block rounded-lg border border-primary/15 bg-primary/5 px-3 py-2 font-medium">{node.label}</span>{node.children?.map((child, index) => <Hierarchy key={`${child.label}-${index}`} node={child} />)}</li></ul>;
+  return <div className="flex min-w-max justify-center overflow-x-auto px-3 pb-2 text-sm"><HierarchyNode node={node} root /></div>;
+}
+
+function HierarchyNode({ node, root = false }: { node: StudyHierarchyNode; root?: boolean }) {
+  const children = node.children ?? [];
+  return <div className="flex flex-col items-center">
+    {!root ? <span className="h-5 border-l-2 border-primary/30" aria-hidden /> : null}
+    <span className="relative z-10 rounded-xl border border-primary/25 bg-primary/5 px-4 py-2 text-center font-medium shadow-sm">{node.label}</span>
+    {children.length > 0 ? <>
+      <span className="h-5 border-l-2 border-primary/30" aria-hidden />
+      <div className="relative flex items-start gap-5 px-3 before:absolute before:left-[calc(1.5rem)] before:right-[calc(1.5rem)] before:top-0 before:border-t-2 before:border-primary/30">
+        {children.map((child, index) => <HierarchyNode key={`${child.label}-${index}`} node={child} />)}
+      </div>
+    </> : null}
+  </div>;
 }
 
 function ErDiagram({ artifact }: { artifact: Extract<StudyArtifact, { artifact: "er-diagram" }> }) {

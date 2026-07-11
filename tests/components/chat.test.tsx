@@ -40,6 +40,18 @@ describe("chat interactions", () => {
     expect(onCitationClick).toHaveBeenCalledWith(1, 3);
   });
 
+  it("renders citations inside Markdown headings as source buttons", () => {
+    render(
+      <ChatMessage
+        role="assistant"
+        content="### Characteristics [Source 3, Slide 23]"
+        validCitations={new Set(["3:23"])}
+        onCitationClick={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "[Source 3, Slide 23]" })).toBeTruthy();
+  });
+
   it("renders validated semantic study artifacts", () => {
     render(
       <ChatMessage

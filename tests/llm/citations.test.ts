@@ -68,6 +68,15 @@ describe("citation repair", () => {
       ),
     ).toBe("Sets [Source 3, Slide 2] [Source 3, Slide 4] [Source 3, Slide 6]. Ranges [Source 3, Slide 8] [Source 3, Slide 9] [Source 3, Slide 11] [Source 3, Slide 12].");
   });
+
+  it("normalizes compound references written with singular Slide", () => {
+    expect(
+      repairModelCitations(
+        "Definitions [Source 3, Slide 6, 20-22].",
+        [6, 20, 21, 22].map((slide) => createChunk("Source 3", slide)),
+      ),
+    ).toBe("Definitions [Source 3, Slide 6] [Source 3, Slide 20] [Source 3, Slide 21] [Source 3, Slide 22].");
+  });
 });
 
 function createChunk(sourceLabel: string, slideNumber: number): SourceChunk {

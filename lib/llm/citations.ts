@@ -4,7 +4,7 @@ const qualifiedCitationPattern = /\[Source\s+(\d+)\s*,\s*Slide\s+(\d+)\]/gi;
 const legacyCitationPattern = /\[Slide\s+(\d+)\]/gi;
 const rangedCitationPattern = /\[Source\s+(\d+)\s*,\s*Slides?\s+(\d+)\s*[-–—]\s*(\d+)\]/gi;
 const listedCitationPattern = /\[Source\s+(\d+)\s*,\s*Slides\s+([\d\s,]+)\]/gi;
-const compoundCitationPattern = /\[Source\s+(\d+)\s*,\s*Slides\s+([\d\s,–—-]+)\]/gi;
+const compoundCitationPattern = /\[Source\s+(\d+)\s*,\s*Slides?\s+([\d\s,–—-]+)\]/gi;
 const sourceOnlyCitationPattern = /\[Source\s+\d+\]/gi;
 const groupedCitationPattern =
   /\[((?:Source\s+\d+\s*,\s*Slide\s+\d+)(?:\s*;\s*Source\s+\d+\s*,\s*Slide\s+\d+)+)\]/gi;
