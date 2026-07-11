@@ -9,6 +9,24 @@ const maxOutlineCharacters = 26_000;
 const maxSlidesPerSource = 18;
 const maxChapters = 24;
 const maxGoals = 6;
+const targetChapterSlides = 95;
+const maxChapterSlides = 125;
+
+interface SlideOutlineItem {
+  deckId: string;
+  deckTitle: string;
+  sourceLabel: string;
+  sourceTitle: string;
+  slide: number;
+  sourceSlide: number;
+  title: string;
+}
+
+interface ChapterSegment {
+  slides: SlideOutlineItem[];
+  scopes: StudyChapterScope[];
+  sourceTitles: string[];
+}
 
 export function createLibraryKey(chunks: SourceChunk[]): string {
   const deckParts = Array.from(
@@ -23,7 +41,58 @@ export function createLibraryKey(chunks: SourceChunk[]): string {
 }
 
 export function buildCorpusOutline(chunks: SourceChunk[]): string {
-  const slides = Array.from(
+  const slides = getSlideOutline(chunks);
+
+  const lines: string[] = [];
+  const bySource = groupBy(slides, (slide) => `${slide.deckId}:${slide.sourceLabel}`);
+  for (const sourceSlides of bySource.values()) {
+    const first = sourceSlides[0]!;
+    lines.push(
+      `DECK ${JSON.stringify(first.deckId)} | ${first.deckTitle}`,
+      `${first.sourceLabel} | ${first.sourceTitle} | global slides ${first.slide}-${sourceSlides.at(-1)!.slide}`,
+    );
+    for (const slide of sampleEvenly(sourceSlides, maxSlidesPerSource)) {
+      lines.push(`- global ${slide.slide}, local ${slide.sourceSlide}: ${slide.title}`);
+    }
+  }
+
+  return truncateOutline(lines, maxOutlineCharacters);
+}
+
+export function createDeterministicChapterPlan(
+  chunks: SourceChunk[],
+  language = "the corpus language",
+): StudyChapterPlan {
+  const slides = getSlideOutline(chunks);
+  const sources = groupBy(slides, (slide) => `${slide.deckId}:${slide.sourceLabel}`);
+  const initial = [...sources.values()].flatMap(segmentSource);
+  const merged = absorbTinySegments(mergeCompatibleSegments(initial));
+  const chapters = merged.map((segment, index): StudyChapter => {
+    const concepts = extractConceptLabels(segment.slides, segment.sourceTitles);
+    const sourceTitle = cleanSourceTitle(segment.sourceTitles[0]!);
+    const fallbackTitle = sourceTitle || `Study unit ${index + 1}`;
+    const title = segment.sourceTitles.length === 1
+      ? `${sourceTitle}${concepts.length > 0 ? ` — ${concepts.slice(0, 2).join(" e ")}` : ""}`
+      : concepts.join(" · ") || fallbackTitle;
+    return {
+      id: `chapter-${index + 1}`,
+      title,
+      description: `Study the concepts covered across ${segment.scopes.reduce((sum, scope) => sum + scope.slideEnd - scope.slideStart + 1, 0)} slides from ${segment.sourceTitles.length} source${segment.sourceTitles.length === 1 ? "" : "s"}.`,
+      goals: concepts.slice(0, 4).map((concept) => `Explain and apply ${concept}`),
+      scopes: segment.scopes,
+    };
+  });
+  return {
+    version: 1,
+    libraryKey: createLibraryKey(chunks),
+    title: chunks[0]?.deckTitle ? `Study plan — ${chunks[0].deckTitle}` : "Study plan",
+    language,
+    chapters,
+  };
+}
+
+function getSlideOutline(chunks: SourceChunk[]): SlideOutlineItem[] {
+  return Array.from(
     new Map(
       chunks.map((chunk) => [
         `${chunk.deckId}:${chunk.slideNumber}`,
@@ -41,24 +110,169 @@ export function buildCorpusOutline(chunks: SourceChunk[]): string {
   ).sort((left, right) =>
     left.deckId.localeCompare(right.deckId) || left.slide - right.slide,
   );
+}
 
-  const lines: string[] = [];
-  const bySource = Map.groupBy(
-    slides,
-    (slide) => `${slide.deckId}:${slide.sourceLabel}`,
-  );
-  for (const sourceSlides of bySource.values()) {
-    const first = sourceSlides[0]!;
-    lines.push(
-      `DECK ${JSON.stringify(first.deckId)} | ${first.deckTitle}`,
-      `${first.sourceLabel} | ${first.sourceTitle} | global slides ${first.slide}-${sourceSlides.at(-1)!.slide}`,
-    );
-    for (const slide of sampleEvenly(sourceSlides, maxSlidesPerSource)) {
-      lines.push(`- global ${slide.slide}, local ${slide.sourceSlide}: ${slide.title}`);
+function segmentSource(slides: SlideOutlineItem[]): ChapterSegment[] {
+  if (slides.length <= maxChapterSlides) return [toSegment(slides)];
+  const segmentCount = Math.ceil(slides.length / targetChapterSlides);
+  const segments: ChapterSegment[] = [];
+  let start = 0;
+  for (let part = 0; part < segmentCount; part += 1) {
+    const remainingParts = segmentCount - part;
+    const idealEnd = start + Math.round((slides.length - start) / remainingParts);
+    const end = part === segmentCount - 1 ? slides.length : findBoundary(slides, idealEnd);
+    segments.push(toSegment(slides.slice(start, end)));
+    start = end;
+  }
+  return segments;
+}
+
+function findBoundary(slides: SlideOutlineItem[], idealEnd: number): number {
+  const minimum = Math.max(1, idealEnd - 12);
+  const maximum = Math.min(slides.length - 1, idealEnd + 12);
+  let best = idealEnd;
+  let bestScore = -Infinity;
+  for (let index = minimum; index <= maximum; index += 1) {
+    const title = slides[index]?.title ?? "";
+    const previous = slides[index - 1]?.title ?? "";
+    const marker = /^(?:capitolo|chapter|parte|part|unità|unit|introduzione|introduction|esercizi|exercises?)\b/i.test(title) ? 4 : 0;
+    const continuation = /\b(?:continua|continued|cont\.?|parte\s*\d+|part\s*\d+)\b/i.test(title) ? -4 : 0;
+    const novelty = jaccard(titleTokens(title), titleTokens(previous)) < 0.15 ? 1 : 0;
+    const distance = Math.abs(index - idealEnd) / 12;
+    const score = marker + continuation + novelty - distance;
+    if (score > bestScore) { best = index; bestScore = score; }
+  }
+  return best;
+}
+
+function toSegment(slides: SlideOutlineItem[]): ChapterSegment {
+  const first = slides[0]!;
+  const scopes: StudyChapterScope[] = [];
+  for (const slide of slides) {
+    const current = scopes.at(-1);
+    if (current && current.deckId === slide.deckId && current.slideEnd + 1 === slide.slide) {
+      current.slideEnd = slide.slide;
+    } else {
+      scopes.push({ deckId: slide.deckId, slideStart: slide.slide, slideEnd: slide.slide });
     }
   }
+  return { slides, scopes, sourceTitles: [first.sourceTitle] };
+}
 
-  return truncateOutline(lines, maxOutlineCharacters);
+function mergeCompatibleSegments(segments: ChapterSegment[]): ChapterSegment[] {
+  const result: ChapterSegment[] = [];
+  for (const segment of segments) {
+    const previous = result.at(-1);
+    if (previous && canMerge(previous, segment)) {
+      previous.slides.push(...segment.slides);
+      previous.scopes.push(...segment.scopes);
+      previous.sourceTitles = [...new Set([...previous.sourceTitles, ...segment.sourceTitles])];
+    } else {
+      result.push({ ...segment, slides: [...segment.slides], scopes: [...segment.scopes] });
+    }
+  }
+  return result;
+}
+
+function canMerge(left: ChapterSegment, right: ChapterSegment): boolean {
+  if (left.slides.length + right.slides.length > maxChapterSlides) return false;
+  const leftTerms = titleTokens(left.sourceTitles.join(" "));
+  const rightTerms = titleTokens(right.sourceTitles.join(" "));
+  const similarity = jaccard(leftTerms, rightTerms);
+  const exercisePair = hasExerciseMarker(left.sourceTitles) && hasExerciseMarker(right.sourceTitles);
+  const tiny = left.slides.length < 12 || right.slides.length < 12;
+  return similarity >= 0.18 || exercisePair || (tiny && similarity > 0);
+}
+
+const genericTitleTerms = new Set([
+  "basi", "base", "dati", "data", "lezione", "lecture", "corso", "course",
+  "introduzione", "introduction", "parte", "part", "esercizi", "esercizio",
+  "exercise", "exercises", "soluzioni", "soluzione", "solution", "solutions",
+  "esame", "exam", "anno", "accademico", "slide", "slides", "esempio", "example",
+  "del", "dello", "della", "dei", "degli", "delle", "allo", "alla", "agli", "alle",
+  "nel", "nello", "nella", "nei", "negli", "nelle", "con", "per", "tra", "fra", "sul",
+  "sullo", "sulla", "sui", "sugli", "sulle", "che", "come", "sono", "una", "uno",
+  "anche", "altro", "altra", "questo", "questa", "seguente", "dato", "data", "fino",
+  "qui", "dove", "senza", "più", "the", "and", "for", "with", "from", "into", "that",
+  "this", "these", "those", "using", "about", "overview", "intenzionalmente", "pagina", "vuota",
+  "domanda", "domande", "premessa", "riassunto", "recap",
+  "di", "da", "in", "su", "un", "il", "lo", "la", "le", "gli", "ai", "al", "ed",
+  "is", "of", "to", "or", "on", "an", "as", "t1", "t2", "l00", "l01", "l02", "l03", "l04",
+]);
+
+function titleTokens(value: string): Set<string> {
+  return new Set((value.normalize("NFKC").toLocaleLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [])
+    .filter((term) => term.length >= 2 && !genericTitleTerms.has(term) && !/^\d+$/.test(term)));
+}
+
+function absorbTinySegments(segments: ChapterSegment[]): ChapterSegment[] {
+  const result = [...segments];
+  for (let index = 0; index < result.length; index += 1) {
+    const current = result[index]!;
+    if (current.slides.length > 4 || result.length === 1) continue;
+    const previous = result[index - 1];
+    const next = result[index + 1];
+    const target = previous && previous.slides.length + current.slides.length <= maxChapterSlides
+      ? previous
+      : next && next.slides.length + current.slides.length <= maxChapterSlides
+        ? next
+        : undefined;
+    if (!target) continue;
+    if (target === previous) {
+      previous.slides.push(...current.slides);
+      previous.scopes.push(...current.scopes);
+    } else {
+      target.slides.unshift(...current.slides);
+      target.scopes.unshift(...current.scopes);
+    }
+    target.sourceTitles = [...new Set([...target.sourceTitles, ...current.sourceTitles])];
+    result.splice(index, 1);
+    index -= 1;
+  }
+  return result;
+}
+
+function extractConceptLabels(slides: SlideOutlineItem[], sourceTitles: string[]): string[] {
+  const counts = new Map<string, { count: number; display: string }>();
+  for (const slide of slides) {
+    for (const token of titleTokens(slide.title)) {
+      const current = counts.get(token);
+      counts.set(token, { count: (current?.count ?? 0) + 1, display: token });
+    }
+  }
+  for (const sourceTitle of sourceTitles) {
+    for (const token of titleTokens(sourceTitle)) {
+      const current = counts.get(token);
+      counts.set(token, { count: (current?.count ?? 0) + 5, display: token });
+    }
+  }
+  return [...counts.values()]
+    .sort((left, right) => right.count - left.count || left.display.localeCompare(right.display))
+    .slice(0, 3)
+    .map(({ display }) => display.charAt(0).toLocaleUpperCase() + display.slice(1));
+}
+
+function cleanSourceTitle(title: string): string {
+  return title.replace(/\b(?:a\.a\.|20\d{2}\s*[/_-]\s*20\d{2}|20\d{2})\b/gi, "").replace(/\s{2,}/g, " ").trim();
+}
+
+function hasExerciseMarker(titles: string[]): boolean {
+  return /\b(?:eserciz|exam|esame|practice|solution|soluzion)/i.test(titles.join(" "));
+}
+
+function jaccard(left: Set<string>, right: Set<string>): number {
+  if (left.size === 0 || right.size === 0) return 0;
+  const intersection = [...left].filter((term) => right.has(term)).length;
+  return intersection / new Set([...left, ...right]).size;
+}
+
+function groupBy<T>(items: T[], key: (item: T) => string): Map<string, T[]> {
+  const groups = new Map<string, T[]>();
+  for (const item of items) {
+    const value = key(item);
+    groups.set(value, [...(groups.get(value) ?? []), item]);
+  }
+  return groups;
 }
 
 function sampleEvenly<T>(items: T[], limit: number): T[] {
@@ -91,6 +305,30 @@ Use this exact shape:
     {
       role: "user" as const,
       content: `Divide this corpus into study chapters. Respond in ${language}.\n\n${buildCorpusOutline(chunks)}`,
+    },
+  ];
+}
+
+export function buildChapterRefinementMessages(
+  plan: StudyChapterPlan,
+  chunks: SourceChunk[],
+): Array<{ role: "system" | "user"; content: string }> {
+  const sourceRanges = [...groupBy(getSlideOutline(chunks), (slide) => `${slide.deckId}:${slide.sourceLabel}`).values()]
+    .map((slides) => {
+      const first = slides[0]!;
+      return `${first.sourceLabel} | deckId=${JSON.stringify(first.deckId)} | slides ${first.slide}-${slides.at(-1)!.slide} | ${first.sourceTitle}`;
+    })
+    .join("\n");
+  return [
+    {
+      role: "system",
+      content: `You refine an existing local study curriculum. Return JSON only, without Markdown fences.
+Preserve valid deck IDs and slide coverage. Never overlap scopes or invent slides. Improve chapter titles, descriptions, learning goals, prerequisite order, and merge/split choices only when clearly beneficial.
+Keep 10-24 chapters and use exactly this shape: {"version":1,"title":"...","language":"...","chapters":[{"title":"...","description":"...","goals":["..."],"scopes":[{"deckId":"...","slideStart":1,"slideEnd":10}]}]}.`,
+    },
+    {
+      role: "user",
+      content: `Source ranges:\n${sourceRanges}\n\nExisting curriculum:\n${JSON.stringify({ title: plan.title, language: plan.language, chapters: plan.chapters })}`,
     },
   ];
 }

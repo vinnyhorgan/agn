@@ -95,7 +95,7 @@ test("persists unique decks and remembers each deck's slide", async ({
   await page.getByRole("button", { name: "Enlarge slide 2" }).click();
   await page
     .getByRole("dialog", { name: "Slide 2 image" })
-    .click({ position: { x: 20, y: 850 } });
+    .click({ position: { x: 20, y: 700 } });
   await expect(page.getByRole("dialog", { name: "Slide 2 image" })).toHaveCount(0);
 
   await page.reload();
@@ -139,6 +139,29 @@ test("shows a pending turn immediately and restores completed chat", async ({
   await page.reload();
   await expect(page.getByText("What is SQL?")).toBeVisible();
   await expect(page.getByText("A streamed answer.")).toBeVisible();
+});
+
+test("builds and restores study chapters without a provider call", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-chromium");
+  let providerCalls = 0;
+  await page.route("**/api/deepinfra/chat", async (route) => {
+    providerCalls += 1;
+    await route.abort();
+  });
+  await page.goto("/");
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "study.sir",
+    mimeType: "application/zip",
+    buffer: await createSirArchive("Database Foundations", 4),
+  });
+  await page.getByRole("button", { name: "Study chapters" }).click();
+  await page.getByRole("button", { name: "Build chapters" }).click();
+  await expect(page.getByText(/Database Foundations/).first()).toBeVisible();
+  expect(providerCalls).toBe(0);
+  await page.getByRole("button", { name: "Close study chapters" }).click();
+  await page.getByRole("button", { name: "Study chapters" }).click();
+  await expect(page.getByRole("button", { name: /Database Foundations/ }).first()).toBeVisible();
+  expect(providerCalls).toBe(0);
 });
 
 test("imports a mixed SIR v2 corpus and preserves source-local slides", async ({

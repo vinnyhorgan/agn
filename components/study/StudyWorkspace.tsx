@@ -10,7 +10,9 @@ import { streamDeepInfraChatCompletionViaRoute } from "@/lib/llm/openAiCompatibl
 import type { SourceChunk } from "@/lib/search/types";
 import {
   buildChapterPlannerMessages,
+  buildChapterRefinementMessages,
   chunksForChapter,
+  createDeterministicChapterPlan,
   createLibraryKey,
   parseChapterPlan,
 } from "@/lib/study/chapterPlanner";
@@ -40,6 +42,7 @@ export function StudyWorkspace({
   const [pages, setPages] = useState<Record<string, StudyPage>>({});
   const [selectedId, setSelectedId] = useState<string>();
   const [busy, setBusy] = useState<"plan" | "page">();
+  const [draftPage, setDraftPage] = useState("");
   const [error, setError] = useState<string>();
 
   useEffect(() => {
@@ -69,7 +72,13 @@ export function StudyWorkspace({
   if (!open) return null;
   const selected = plan?.chapters.find((chapter) => chapter.id === selectedId);
 
-  async function createPlan() {
+  function createPlan() {
+    const nextPlan = createDeterministicChapterPlan(chunks, inferLanguage(chunks));
+    setPlan(nextPlan); setPages({}); setSelectedId(nextPlan.chapters[0]?.id);
+    persist(storageKey, nextPlan, {});
+  }
+
+  async function refinePlan() {
     if (!apiKey.trim()) return setError("Add a DeepInfra API key before building chapters.");
     setBusy("plan"); setError(undefined);
     try {
@@ -77,7 +86,9 @@ export function StudyWorkspace({
       const timeout = window.setTimeout(() => controller.abort(), 90_000);
       const response = await streamDeepInfraChatCompletionViaRoute({
         settings: { apiKey },
-        messages: buildChapterPlannerMessages(chunks, inferLanguage(chunks)),
+        messages: plan
+          ? buildChapterRefinementMessages(plan, chunks)
+          : buildChapterPlannerMessages(chunks, inferLanguage(chunks)),
         onDelta() {},
         reasoningEffort: "low",
         maxTokens: 8_000,
@@ -88,24 +99,29 @@ export function StudyWorkspace({
       setPlan(nextPlan); setPages({}); setSelectedId(nextPlan.chapters[0]?.id);
       persist(storageKey, nextPlan, {});
     } catch (cause) {
-      setError(cause instanceof Error && cause.name !== "AbortError" ? cause.message : "Chapter planning exceeded the 90-second budget. Try again later.");
+      setError(cause instanceof Error && cause.name !== "AbortError" ? cause.message : "Optional curriculum refinement exceeded the 90-second budget. The local curriculum is still available.");
     } finally { setBusy(undefined); }
   }
 
   async function createPage(chapter: StudyChapter) {
     if (!apiKey.trim()) return setError("Add a DeepInfra API key before generating a study page.");
     setBusy("page"); setError(undefined);
+    setDraftPage("");
     try {
       const chapterChunks = chunksForChapter(chunks, chapter);
       const evidence = selectStudyPageEvidence(chapterChunks);
       let streamed = "";
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), 150_000);
       const response = await streamDeepInfraChatCompletionViaRoute({
         settings: { apiKey },
         messages: buildStudyPageMessages({ chapter, chunks: chapterChunks, language: inferLanguage(chapterChunks) }),
-        onDelta(delta) { streamed += delta; },
-        reasoningEffort: "medium",
-        maxTokens: 8_000,
+        onDelta(delta) { streamed += delta; setDraftPage(streamed); },
+        reasoningEffort: "low",
+        maxTokens: 4_500,
+        signal: controller.signal,
       });
+      window.clearTimeout(timeout);
       const page: StudyPage = {
         version: 1,
         chapterId: chapter.id,
@@ -115,9 +131,10 @@ export function StudyWorkspace({
       };
       const nextPages = { ...pages, [chapter.id]: page };
       setPages(nextPages);
+      setDraftPage("");
       if (plan) persist(storageKey, plan, nextPages);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not generate the study page.");
+      setError(cause instanceof Error && cause.name !== "AbortError" ? cause.message : "Study-page generation exceeded the 150-second budget. Partial output remains visible.");
     } finally { setBusy(undefined); }
   }
 
@@ -137,11 +154,11 @@ export function StudyWorkspace({
           <div className="mb-4 md:hidden"><ChapterList plan={plan} selectedId={selectedId} onSelect={setSelectedId} /></div>
           {error ? <p className="mb-4 rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{error}</p> : null}
           {!plan ? (
-            <div className="rounded-2xl border border-border bg-card p-6 text-center"><BookOpen className="mx-auto mb-3 size-7 text-primary" /><h3 className="font-semibold">Turn the corpus into a curriculum</h3><p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-muted-foreground">AGN reads the compact slide outline once, groups concepts and exercises into coherent chapters, and stores the plan in this browser.</p><Button className="mt-5" disabled={busy === "plan" || chunks.length === 0} onClick={() => void createPlan()}>{busy === "plan" ? <Loader2 className="animate-spin" /> : null}Build chapters</Button></div>
+            <div className="rounded-2xl border border-border bg-card p-6 text-center"><BookOpen className="mx-auto mb-3 size-7 text-primary" /><h3 className="font-semibold">Turn the corpus into a curriculum</h3><p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-muted-foreground">AGN builds an instant local curriculum from source structure and slide titles. No API call or web search is needed.</p><Button className="mt-5" disabled={chunks.length === 0} onClick={createPlan}>Build chapters</Button></div>
           ) : selected ? (
             <>
-              <div className="mb-5 rounded-2xl border border-border bg-card p-4"><p className="text-sm leading-6">{selected.description}</p><ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-muted-foreground">{selected.goals.map((goal) => <li key={goal}>{goal}</li>)}</ul><div className="mt-4 flex flex-wrap gap-2"><Button size="sm" variant={activeChapterId === selected.id ? "secondary" : "default"} onClick={() => onActivateChapter(activeChapterId === selected.id ? undefined : selected)}>{activeChapterId === selected.id ? "Studying this chapter" : "Study this chapter in chat"}</Button><Button size="sm" variant="secondary" onClick={() => onStartTest(selected)}>Test me thoroughly</Button><Button size="sm" variant="outline" disabled={busy === "page"} onClick={() => void createPage(selected)}>{busy === "page" ? <Loader2 className="animate-spin" /> : pages[selected.id] ? <RefreshCw /> : null}{pages[selected.id] ? "Regenerate page" : "Generate study page"}</Button></div></div>
-              {pages[selected.id] ? <ChatMessage role="assistant" content={pages[selected.id]!.markdown} /> : <p className="py-12 text-center text-sm text-muted-foreground">Generate a durable study page with explanations, examples, traps, citations, and diagrams where useful.</p>}
+              <div className="mb-5 rounded-2xl border border-border bg-card p-4"><p className="text-sm leading-6">{selected.description}</p><ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-muted-foreground">{selected.goals.map((goal) => <li key={goal}>{goal}</li>)}</ul><div className="mt-4 flex flex-wrap gap-2"><Button size="sm" variant={activeChapterId === selected.id ? "secondary" : "default"} onClick={() => onActivateChapter(activeChapterId === selected.id ? undefined : selected)}>{activeChapterId === selected.id ? "Studying this chapter" : "Study this chapter in chat"}</Button><Button size="sm" variant="secondary" onClick={() => onStartTest(selected)}>Test me thoroughly</Button><Button size="sm" variant="outline" disabled={busy === "page"} onClick={() => void createPage(selected)}>{busy === "page" ? <Loader2 className="animate-spin" /> : pages[selected.id] ? <RefreshCw /> : null}{pages[selected.id] ? "Regenerate page" : "Generate study page"}</Button><Button size="sm" variant="ghost" disabled={busy === "plan"} onClick={() => void refinePlan()}>{busy === "plan" ? <Loader2 className="animate-spin" /> : null}Optionally refine curriculum with AI</Button></div></div>
+              {draftPage ? <ChatMessage role="assistant" content={draftPage} /> : pages[selected.id] ? <ChatMessage role="assistant" content={pages[selected.id]!.markdown} /> : <p className="py-12 text-center text-sm text-muted-foreground">Generate a durable study page with explanations, examples, traps, citations, and diagrams where useful.</p>}
             </>
           ) : null}
         </div>

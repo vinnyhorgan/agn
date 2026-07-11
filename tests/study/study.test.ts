@@ -4,6 +4,7 @@ import { parseStudyContent, validateStudyArtifact } from "../../lib/study/artifa
 import {
   buildCorpusOutline,
   chunksForChapter,
+  createDeterministicChapterPlan,
   parseChapterPlan,
 } from "../../lib/study/chapterPlanner";
 import { selectStudyPageEvidence } from "../../lib/study/studyPage";
@@ -47,6 +48,12 @@ describe("study chapters", () => {
     const selected = selectStudyPageEvidence(large);
     expect(selected.reduce((sum, chunk) => sum + chunk.text.length, 0)).toBeLessThanOrEqual(72_000);
   });
+
+  it("creates a complete deterministic plan without a provider call", () => {
+    const plan = createDeterministicChapterPlan(chunks, "en");
+    expect(plan.chapters).toHaveLength(1);
+    expect(chunksForChapter(chunks, plan.chapters[0]!)).toEqual(chunks);
+  });
 });
 
 describe("study artifacts", () => {
@@ -54,6 +61,11 @@ describe("study artifacts", () => {
     const parts = parseStudyContent('Before\n```agn-artifact\n{"artifact":"flowchart","version":1,"title":"Plan","nodes":[{"id":"a","label":"A"},{"id":"b","label":"B"}],"edges":[{"from":"a","to":"b"}]}\n```\nAfter');
     expect(parts).toHaveLength(3);
     expect(parts[1]?.artifact?.artifact).toBe("flowchart");
+  });
+
+  it("normalizes supported artifacts emitted in json fences", () => {
+    const parts = parseStudyContent('```json\n{"artifact":"comparison","version":1,"title":"Keys","columns":["Key","Meaning"],"rows":[["PK","Primary"]]}\n```');
+    expect(parts[0]?.artifact?.artifact).toBe("comparison");
   });
 
   it("rejects executable and dangling artifact structures", () => {

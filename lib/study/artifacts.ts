@@ -11,6 +11,7 @@ export interface StudyContentPart {
 }
 
 export function parseStudyContent(content: string): StudyContentPart[] {
+  content = normalizeArtifactFences(content);
   const pattern = /```agn-artifact\s*\n([\s\S]*?)```/gi;
   const parts: StudyContentPart[] = [];
   let cursor = 0;
@@ -30,6 +31,19 @@ export function parseStudyContent(content: string): StudyContentPart[] {
   }
   if (cursor < content.length) parts.push({ type: "markdown", content: content.slice(cursor) });
   return parts.length > 0 ? parts : [{ type: "markdown", content }];
+}
+
+export function normalizeArtifactFences(content: string): string {
+  return content.replace(/```json\s*\n([\s\S]*?)```/gi, (block, body: string) => {
+    try {
+      const parsed = JSON.parse(body) as { artifact?: unknown };
+      return parsed?.artifact === "flowchart" || parsed?.artifact === "hierarchy" || parsed?.artifact === "comparison"
+        ? `\`\`\`agn-artifact\n${body.trim()}\n\`\`\``
+        : block;
+    } catch {
+      return block;
+    }
+  });
 }
 
 export function validateStudyArtifact(value: unknown): StudyArtifact {

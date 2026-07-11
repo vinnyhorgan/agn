@@ -2,6 +2,8 @@ import type { SourceChunk } from "@/lib/search/types";
 
 const qualifiedCitationPattern = /\[Source\s+(\d+)\s*,\s*Slide\s+(\d+)\]/gi;
 const legacyCitationPattern = /\[Slide\s+(\d+)\]/gi;
+const rangedCitationPattern = /\[Source\s+(\d+)\s*,\s*Slides?\s+(\d+)\s*[-–—]\s*(\d+)\]/gi;
+const sourceOnlyCitationPattern = /\[Source\s+\d+\]/gi;
 const groupedCitationPattern =
   /\[((?:Source\s+\d+\s*,\s*Slide\s+\d+)(?:\s*;\s*Source\s+\d+\s*,\s*Slide\s+\d+)+)\]/gi;
 
@@ -16,7 +18,20 @@ export function repairModelCitations(
     ),
   );
 
-  const normalizedGroups = content.replace(groupedCitationPattern, (_, group: string) =>
+  const expandedRanges = content.replace(
+    rangedCitationPattern,
+    (_citation, sourceNumberText: string, startText: string, endText: string) => {
+      const sourceNumber = Number(sourceNumberText);
+      const start = Number(startText);
+      const end = Number(endText);
+      if (!Number.isInteger(start) || !Number.isInteger(end) || end < start || end - start > 20) return "";
+      return Array.from({ length: end - start + 1 }, (_, offset) => start + offset)
+        .filter((slide) => validQualified.has(`source ${sourceNumber},${slide}`))
+        .map((slide) => `[Source ${sourceNumber}, Slide ${slide}]`)
+        .join(" ");
+    },
+  );
+  const normalizedGroups = expandedRanges.replace(groupedCitationPattern, (_, group: string) =>
     group
       .split(/\s*;\s*/)
       .map((citation) => `[${citation}]`)
@@ -31,6 +46,7 @@ export function repairModelCitations(
   );
 
   return repairedQualified
+    .replace(sourceOnlyCitationPattern, "")
     .replace(legacyCitationPattern, (citation, slideNumber: string) => {
       const matchingSources = uniqueSourceLabels(
         sources.filter(

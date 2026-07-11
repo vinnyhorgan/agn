@@ -50,6 +50,15 @@ describe("citation repair", () => {
       ),
     ).toBe("Policies [Source 20, Slide 15] [Source 20, Slide 13].");
   });
+
+  it("expands valid citation ranges and removes source-only markers", () => {
+    expect(
+      repairModelCitations(
+        "Sequence [Source 4, Slide 3-5]. Generic [Source 4].",
+        [createChunk("Source 4", 3), createChunk("Source 4", 4), createChunk("Source 4", 5)],
+      ),
+    ).toBe("Sequence [Source 4, Slide 3] [Source 4, Slide 4] [Source 4, Slide 5]. Generic.");
+  });
 });
 
 function createChunk(sourceLabel: string, slideNumber: number): SourceChunk {

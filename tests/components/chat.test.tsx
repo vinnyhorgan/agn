@@ -40,6 +40,37 @@ describe("chat interactions", () => {
     expect(onCitationClick).toHaveBeenCalledWith(1, 3);
   });
 
+  it("renders validated semantic study artifacts", () => {
+    render(
+      <ChatMessage
+        role="assistant"
+        content={'Process\n```agn-artifact\n{"artifact":"flowchart","version":1,"title":"Query pipeline","nodes":[{"id":"a","label":"Parse"},{"id":"b","label":"Execute"}],"edges":[{"from":"a","to":"b","label":"valid"}]}\n```'}
+      />,
+    );
+    expect(screen.getByText("Query pipeline")).toBeTruthy();
+    expect(screen.getByText("Parse")).toBeTruthy();
+    expect(screen.getByText("Execute")).toBeTruthy();
+  });
+
+  it("builds and persists a local study curriculum without an API request", async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const source: SourceChunk = {
+      id: "deck:slide-1-chunk-1", deckId: "deck", deckTitle: "Database course",
+      sourceLabel: "Source 1", sourceTitle: "Relational model", sourcePath: "relational.pdf",
+      sourceMediaType: "pdf", slideNumber: 1, sourceSlideNumber: 1,
+      slideTitle: "Candidate keys", text: "A candidate key is a minimal superkey.",
+      slideImagePath: "slides/0001.webp",
+    };
+    render(<ChatPanel sourceChunks={[source]} sourceCount={1} />);
+    await user.click(screen.getByRole("button", { name: "Study chapters" }));
+    await user.click(screen.getByRole("button", { name: "Build chapters" }));
+    expect(screen.getAllByText(/Relational model/).length).toBeGreaterThan(0);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(Object.keys(window.localStorage).some((key) => key.startsWith("agn.study."))).toBe(true);
+  });
+
   it("loads and persists the DeepInfra key in localStorage", async () => {
     window.localStorage.setItem("agn.deepInfra.apiKey", "saved-key");
     const user = userEvent.setup();

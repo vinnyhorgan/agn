@@ -149,6 +149,8 @@ export function ChatPanel({
     }
 
     const currentTurns = turns;
+    const wantsWeb = isExplicitWebSearch(trimmedQuestion) ||
+      (!activeChapter && shouldSearchWeb(trimmedQuestion));
     const turnStartedAt = performance.now();
     const retrievalStartedAt = performance.now();
     const retrievalCorpus = activeChapter
@@ -170,7 +172,7 @@ export function ChatPanel({
         retrievalMode,
         webPolicy: isExplicitWebSearch(trimmedQuestion)
           ? "explicit"
-          : shouldSearchWeb(trimmedQuestion)
+          : wantsWeb
             ? "automatic"
             : "never",
       },
@@ -216,9 +218,9 @@ export function ChatPanel({
     try {
       const webStartedAt = performance.now();
       diagnostics.web.attempted =
-        shouldSearchWeb(trimmedQuestion) && Boolean(storedTavilyApiKey.trim());
+        wantsWeb && Boolean(storedTavilyApiKey.trim());
       const webResults =
-        shouldSearchWeb(trimmedQuestion) && storedTavilyApiKey.trim()
+        wantsWeb && storedTavilyApiKey.trim()
           ? await searchWebViaRoute({
               apiKey: storedTavilyApiKey,
               query: trimmedQuestion,

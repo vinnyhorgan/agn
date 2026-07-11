@@ -6,14 +6,33 @@ import type { StudyChapter } from "@/lib/study/types";
 export const maxStudyPageEvidenceCharacters = 72_000;
 
 export function selectStudyPageEvidence(chunks: SourceChunk[]): SourceChunk[] {
-  const slides = Array.from(
-    new Map(
-      chunks.map((chunk) => [`${chunk.deckId}:${chunk.slideNumber}`, chunk]),
-    ).values(),
-  );
+  const totalCharacters = chunks.reduce((sum, chunk) => sum + chunk.text.length, 0);
+  if (totalCharacters <= maxStudyPageEvidenceCharacters) return chunks;
+
+  const bySlide = new Map<string, SourceChunk[]>();
+  for (const chunk of chunks) {
+    const key = `${chunk.deckId}:${chunk.slideNumber}`;
+    bySlide.set(key, [...(bySlide.get(key) ?? []), chunk]);
+  }
+  const slides = [...bySlide.values()];
+  const sampledIndexes = new Set<number>();
+  const sampleCount = Math.min(70, slides.length);
+  for (let index = 0; index < sampleCount; index += 1) {
+    sampledIndexes.add(Math.round((index * (slides.length - 1)) / Math.max(1, sampleCount - 1)));
+  }
+  slides.forEach((slideChunks, index) => {
+    const title = slideChunks[0]?.slideTitle ?? "";
+    if (/\b(?:definiz|definition|teorema|theorem|regola|rule|esempio|example|eserciz|exercise|errore|mistake|riepilogo|summary)\b/i.test(title)) {
+      sampledIndexes.add(index);
+    }
+  });
+
+  const candidates = [...sampledIndexes]
+    .sort((left, right) => left - right)
+    .flatMap((index) => slides[index] ?? []);
   const selected: SourceChunk[] = [];
   let characters = 0;
-  for (const chunk of slides) {
+  for (const chunk of candidates) {
     if (characters + chunk.text.length > maxStudyPageEvidenceCharacters) break;
     selected.push(chunk);
     characters += chunk.text.length;
