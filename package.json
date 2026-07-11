@@ -12,6 +12,7 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
+    "test:live": "vitest run --config vitest.live.config.ts",
     "test:ui": "vitest run tests/components",
     "test:e2e": "playwright test",
     "typecheck": "tsc --noEmit"

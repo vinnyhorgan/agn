@@ -122,4 +122,33 @@ describe("chat interactions", () => {
     expect(exportText).toContain("lectures/relational.pdf");
     expect(exportText).toContain("A candidate key is a minimal superkey.");
   });
+
+  it("restores the actionable failure cause instead of presenting evidence as completed", () => {
+    window.localStorage.setItem(
+      "agn.chat.history",
+      JSON.stringify([
+        {
+          id: "failed-turn",
+          question: "Search the web, then explain it",
+          answer: "",
+          sourceIds: [],
+          webResults: [
+            {
+              title: "A result",
+              url: "https://example.com/result",
+              content: "Evidence",
+              score: 0.9,
+            },
+          ],
+          status: "error",
+          error: "DeepInfra rejected this API key. Check that it is valid and has access.",
+        },
+      ]),
+    );
+
+    render(<ChatPanel sourceChunks={[]} />);
+
+    expect(screen.getByText(/DeepInfra rejected this API key/)).toBeTruthy();
+    expect(screen.queryByRole("link", { name: /A result/ })).toBeNull();
+  });
 });

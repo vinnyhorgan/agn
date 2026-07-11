@@ -9,7 +9,7 @@ export default defineConfig({
     },
   },
   test: {
-    include: ["tests/**/*.{test,spec}.{ts,tsx}"],
-    exclude: ["tests/e2e/**", "tests/live/**"],
+    include: ["tests/live/**/*.live.test.ts"],
+    testTimeout: 60_000,
   },
 });

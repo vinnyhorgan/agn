@@ -49,6 +49,7 @@ interface ChatTurn {
   sources: SourceChunk[];
   webResults: WebSearchResult[];
   status: ChatTurnStatus;
+  error?: string;
 }
 
 interface StoredChatTurn {
@@ -58,6 +59,7 @@ interface StoredChatTurn {
   sourceIds: string[];
   webResults?: WebSearchResult[];
   status: Exclude<ChatTurnStatus, "streaming">;
+  error?: string;
 }
 
 const historyLimit = 6;
@@ -214,6 +216,11 @@ export function ChatPanel({
       writeStoredTurns(completedTurns);
     } catch (chatError) {
       const wasStopped = abortController.signal.aborted;
+      const failureMessage = wasStopped
+        ? undefined
+        : chatError instanceof Error
+          ? chatError.message
+          : "Could not complete the DeepInfra request.";
       const interruptedTurn: ChatTurn = {
         ...pendingTurn,
         answer: repairAnswerCitations(
@@ -222,17 +229,14 @@ export function ChatPanel({
           pendingTurn.webResults,
         ),
         status: wasStopped ? "stopped" : "error",
+        error: failureMessage,
       };
       const interruptedTurns = [...currentTurns, interruptedTurn];
       setSessionTurns(interruptedTurns);
       writeStoredTurns(interruptedTurns);
 
       if (!wasStopped) {
-        setError(
-          chatError instanceof Error
-            ? chatError.message
-            : "Could not complete the DeepInfra request.",
-        );
+        setError(failureMessage);
       }
     } finally {
       abortControllerRef.current = undefined;
@@ -455,14 +459,21 @@ function ChatTurnView({
           Thinking
         </div>
       ) : (
-        <p className="mr-auto px-1 text-xs text-muted-foreground">
-          {turn.status === "stopped" ? "Generation stopped" : "No response received"}
+        <p
+          className={cn(
+            "mr-auto px-1 text-xs text-muted-foreground",
+            turn.status === "error" && "text-destructive",
+          )}
+        >
+          {turn.status === "stopped"
+            ? "Generation stopped"
+            : turn.error ?? "The model request failed before producing a response."}
         </p>
       )}
-      {turn.sources.length > 0 && turn.status !== "streaming" ? (
+      {turn.sources.length > 0 && turn.status !== "streaming" && turn.status !== "error" ? (
         <RetrievedSources sources={turn.sources} onSelectSource={onSelectSource} />
       ) : null}
-      {turn.webResults.length > 0 && turn.status !== "streaming" ? (
+      {turn.webResults.length > 0 && turn.status !== "streaming" && turn.status !== "error" ? (
         <WebSources results={turn.webResults} />
       ) : null}
     </article>
@@ -566,6 +577,7 @@ function writeStoredTurns(turns: ChatTurn[]) {
       sourceIds: turn.sources.map((source) => source.id),
       webResults: turn.webResults,
       status: turn.status,
+      error: turn.error,
     }));
   writeStorage(
     chatHistoryStorageKey,
@@ -652,6 +664,7 @@ function parseStoredTurns(value: string, sourceChunks: SourceChunk[]): ChatTurn[
           .filter((source): source is SourceChunk => source !== undefined),
         webResults: turn.webResults ?? [],
         status: turn.status,
+        error: turn.error,
       }));
   } catch {
     return [];
@@ -668,6 +681,7 @@ function isStoredChatTurn(value: unknown): value is StoredChatTurn {
     typeof turn.id === "string" &&
     typeof turn.question === "string" &&
     typeof turn.answer === "string" &&
+    (turn.error === undefined || typeof turn.error === "string") &&
     Array.isArray(turn.sourceIds) &&
     turn.sourceIds.every((sourceId) => typeof sourceId === "string") &&
     (turn.webResults === undefined ||
@@ -718,6 +732,7 @@ function formatChatDiagnosticExport(
       `## Turn ${turnIndex + 1}`,
       "",
       `Status: ${turn.status}`,
+      ...(turn.error ? [`Error: ${turn.error}`] : []),
       "",
       "### User",
       "",

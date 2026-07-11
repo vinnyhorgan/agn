@@ -4,6 +4,7 @@ import type {
   DeepInfraSettings,
   LlmMessage,
 } from "@/lib/llm/types";
+import { validateProviderMessages } from "@/lib/llm/providerCapabilities";
 
 export const DEEPINFRA_BASE_URL = "https://api.deepinfra.com/v1/openai";
 export const DEEPINFRA_MODEL = "deepseek-ai/DeepSeek-V4-Flash";
@@ -47,9 +48,11 @@ export async function createDeepInfraChatCompletion({
     throw new Error("Add a valid DeepInfra API key before chatting.");
   }
 
+  const validatedMessages = requireValidMessages(messages);
+
   const body: ChatCompletionRequest = {
     model: DEEPINFRA_MODEL,
-    messages,
+    messages: validatedMessages,
     temperature: 0.2,
     reasoning_effort: "medium",
   };
@@ -105,9 +108,11 @@ export async function createDeepInfraChatCompletionStream({
     throw new Error("Add a valid DeepInfra API key before chatting.");
   }
 
+  const validatedMessages = requireValidMessages(messages);
+
   const body: ChatCompletionRequest = {
     model: DEEPINFRA_MODEL,
-    messages,
+    messages: validatedMessages,
     temperature: 0.2,
     reasoning_effort: "medium",
     stream: true,
@@ -143,6 +148,15 @@ export async function createDeepInfraChatCompletionStream({
   }
 
   return parseOpenAiEventStream(response.body);
+}
+
+function requireValidMessages(messages: LlmMessage[]): LlmMessage[] {
+  const validation = validateProviderMessages(messages);
+  if (!validation.messages) {
+    throw new Error(validation.error ?? "DeepInfra request messages were invalid.");
+  }
+
+  return validation.messages;
 }
 
 export async function streamDeepInfraChatCompletionViaRoute({

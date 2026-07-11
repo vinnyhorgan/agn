@@ -144,4 +144,38 @@ describe("DeepInfra chat completion", () => {
     expect(response.status).toBe(400);
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  it("rejects unsupported roles in the provider client before a paid request", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      createDeepInfraChatCompletion({
+        settings: { apiKey: "deepinfra-key" },
+        messages: [{ role: "developer", content: "Dynamic context" }],
+      }),
+    ).rejects.toThrow("not supported by DeepInfra");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects empty messages locally with an actionable 400 error", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      new Request("http://localhost/api/deepinfra/chat", {
+        method: "POST",
+        body: JSON.stringify({
+          apiKey: "deepinfra-key",
+          messages: [{ role: "user", content: "   " }],
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "Chat messages cannot be empty.",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 });
