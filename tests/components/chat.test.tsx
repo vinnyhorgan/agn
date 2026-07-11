@@ -17,6 +17,7 @@ describe("chat interactions", () => {
   afterEach(() => {
     cleanup();
     window.localStorage.clear();
+    vi.unstubAllGlobals();
   });
 
   it("renders Markdown and opens a valid source citation", async () => {
@@ -150,5 +151,95 @@ describe("chat interactions", () => {
 
     expect(screen.getByText(/DeepInfra rejected this API key/)).toBeTruthy();
     expect(screen.queryByRole("link", { name: /A result/ })).toBeNull();
+  });
+
+  it("persists versioned routing, context, and timing diagnostics for a turn", async () => {
+    window.localStorage.setItem("agn.deepInfra.apiKey", "test-key");
+    const encoder = new TextEncoder();
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue(encoder.encode("A useful answer."));
+            controller.close();
+          },
+        }),
+        { status: 200 },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+
+    render(<ChatPanel sourceChunks={[]} />);
+    await user.type(screen.getByLabelText("Ask a question"), "Explain gravity");
+    await user.click(screen.getByRole("button", { name: "Send question" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("A useful answer.")).toBeTruthy();
+    });
+    const stored = JSON.parse(
+      window.localStorage.getItem("agn.chat.history") ?? "[]",
+    ) as Array<{ diagnostics?: Record<string, unknown> }>;
+    expect(stored[0]?.diagnostics).toMatchObject({
+      version: 1,
+      route: {
+        kind: "deterministic",
+        retrievalMode: "focused",
+        webPolicy: "never",
+      },
+      web: { attempted: false, resultCount: 0 },
+      context: { messageRoles: ["system", "user"] },
+    });
+    expect(
+      (stored[0]?.diagnostics?.timingsMs as { total?: number }).total,
+    ).toBeTypeOf("number");
+  });
+
+  it("records a provider-stage failure after successful web research without showing evidence pills", async () => {
+    window.localStorage.setItem("agn.deepInfra.apiKey", "test-key");
+    window.localStorage.setItem("agn.tavily.apiKey", "tavily-key");
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        Response.json({
+          query: "search the web for current gravity research",
+          results: [
+            {
+              title: "Research result",
+              url: "https://example.com/research",
+              content: "Current research evidence.",
+              score: 0.9,
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({ error: "DeepInfra upstream unavailable." }, { status: 502 }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+
+    render(<ChatPanel sourceChunks={[]} />);
+    await user.type(
+      screen.getByLabelText("Ask a question"),
+      "Search the web for current gravity research",
+    );
+    await user.click(screen.getByRole("button", { name: "Send question" }));
+
+    await waitFor(() => {
+      expect(screen.getAllByText("DeepInfra upstream unavailable.").length).toBeGreaterThan(0);
+    });
+    expect(screen.queryByRole("link", { name: /Research result/ })).toBeNull();
+    const stored = JSON.parse(
+      window.localStorage.getItem("agn.chat.history") ?? "[]",
+    ) as Array<{
+      webResults: unknown[];
+      diagnostics: { error?: { stage: string }; web: { resultCount: number } };
+    }>;
+    expect(stored[0]?.webResults).toHaveLength(1);
+    expect(stored[0]?.diagnostics).toMatchObject({
+      error: { stage: "provider" },
+      web: { resultCount: 1 },
+    });
   });
 });

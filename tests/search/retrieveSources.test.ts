@@ -4,6 +4,7 @@ import {
   getRetrievalMode,
   isOverviewQuery,
   retrieveSourceChunks,
+  retrieveSourceChunksWithDiagnostics,
 } from "../../lib/search/retrieveSources";
 import type { SourceChunk } from "../../lib/search/types";
 
@@ -68,6 +69,63 @@ describe("source retrieval", () => {
     });
 
     expect(results.slice(0, 2).map((chunk) => chunk.slideNumber)).toEqual([1, 2]);
+  });
+
+  it("reports ranked candidates and whether conversation evidence was reused", () => {
+    const previous = createChunk(9, 1, "earlier active topic");
+    const result = retrieveSourceChunksWithDiagnostics({
+      chunks: [createChunk(1, 1, "candidate key definition")],
+      query: "candidate key",
+      previousSources: [previous],
+    });
+
+    expect(result.mode).toBe("focused");
+    expect(result.candidates[0]).toMatchObject({
+      chunk: { slideNumber: 1 },
+      matchedTerms: ["candidate", "key"],
+    });
+    expect(result.candidates[0]?.score).toBeGreaterThan(0);
+    expect(result.previousSourcesUsed).toBe(true);
+    expect(result.chunks.map((chunk) => chunk.slideNumber)).toEqual([1, 9]);
+  });
+
+  it("resolves explicit source-local slide references without lexical guessing", () => {
+    const chunks = [
+      { ...createChunk(8, 1, "unrelated words"), sourceLabel: "Source 2", sourceSlideNumber: 3 },
+      { ...createChunk(3, 1, "slide three elsewhere"), sourceLabel: "Source 1" },
+    ];
+    const result = retrieveSourceChunksWithDiagnostics({
+      chunks,
+      query: "Read Source 2, Slide 3",
+    });
+
+    expect(result.chunks).toHaveLength(1);
+    expect(result.chunks[0]).toMatchObject({
+      sourceLabel: "Source 2",
+      sourceSlideNumber: 3,
+      slideNumber: 8,
+    });
+    expect(result.expansions[0]?.reason).toBe("explicit source and slide reference");
+  });
+
+  it("expands a strong continuation-title match with its adjacent teaching slide", () => {
+    const chunks = [
+      { ...createChunk(1, 1, "candidate key definition"), slideTitle: "Candidate keys" },
+      { ...createChunk(2, 1, "worked minimality example"), slideTitle: "Continued" },
+      { ...createChunk(3, 1, "other topic"), slideTitle: "Normalization" },
+    ];
+    const result = retrieveSourceChunksWithDiagnostics({
+      chunks,
+      query: "What is a candidate key?",
+    });
+
+    expect(result.chunks.map((chunk) => chunk.slideNumber)).toEqual([1, 2]);
+    expect(result.expansions).toEqual([
+      {
+        chunkId: "deck:slide-2-chunk-1",
+        reason: "adjacent slide with a shared or continuation title",
+      },
+    ]);
   });
 });
 

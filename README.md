@@ -33,6 +33,17 @@ pnpm test:e2e
 pnpm build
 ```
 
+To exercise the real provider path without opening the browser, set
+`DEEPINFRA_API_KEY` and `TAVILY_API_KEY` in the shell and run:
+
+```bash
+pnpm test:live
+```
+
+The live harness performs a bounded Tavily search, builds AGN's real grounded
+prompt, and streams a DeepInfra answer. It does not print or persist either
+key and is intentionally excluded from the normal unit-test command.
+
 ## SIR
 
 A SIR v2 `.sir` file normalizes PDFs, images, and Markdown into one

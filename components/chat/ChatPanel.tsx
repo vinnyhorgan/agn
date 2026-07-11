@@ -7,6 +7,11 @@ import { ChatMessage } from "@/components/chat/ChatMessage";
 import { ProviderSettings } from "@/components/chat/ProviderSettings";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
 import { Badge } from "@/components/ui/badge";
+import {
+  HARNESS_VERSION,
+  estimateTokens,
+  type TurnDiagnostics,
+} from "@/lib/harness/diagnostics";
 import { Button } from "@/components/ui/button";
 import { repairModelCitations } from "@/lib/llm/citations";
 import { buildGroundedMessages } from "@/lib/llm/groundedPrompt";
@@ -17,7 +22,7 @@ import {
 import type { DeepInfraSettings, LibrarySource } from "@/lib/llm/types";
 import {
   getRetrievalMode,
-  retrieveSourceChunks,
+  retrieveSourceChunksWithDiagnostics,
 } from "@/lib/search/retrieveSources";
 import type { SourceChunk } from "@/lib/search/types";
 import { cn } from "@/lib/utils";
@@ -50,6 +55,7 @@ interface ChatTurn {
   webResults: WebSearchResult[];
   status: ChatTurnStatus;
   error?: string;
+  diagnostics: TurnDiagnostics;
 }
 
 interface StoredChatTurn {
@@ -60,6 +66,7 @@ interface StoredChatTurn {
   webResults?: WebSearchResult[];
   status: Exclude<ChatTurnStatus, "streaming">;
   error?: string;
+  diagnostics?: TurnDiagnostics;
 }
 
 const historyLimit = 6;
@@ -137,12 +144,47 @@ export function ChatPanel({
     }
 
     const currentTurns = turns;
-    const retrievalMode = getRetrievalMode(trimmedQuestion);
-    const sources = retrieveSourceChunks({
+    const turnStartedAt = performance.now();
+    const retrievalStartedAt = performance.now();
+    const retrieval = retrieveSourceChunksWithDiagnostics({
       chunks: sourceChunks,
       query: trimmedQuestion,
       previousSources: currentTurns.at(-1)?.sources,
     });
+    const retrievalMode = retrieval.mode;
+    const sources = retrieval.chunks;
+    const selectedChunkIds = new Set(sources.map((source) => source.id));
+    const diagnostics: TurnDiagnostics = {
+      version: 1,
+      harnessVersion: HARNESS_VERSION,
+      route: {
+        kind: "deterministic",
+        retrievalMode,
+        webPolicy: isExplicitWebSearch(trimmedQuestion)
+          ? "explicit"
+          : shouldSearchWeb(trimmedQuestion)
+            ? "automatic"
+            : "never",
+      },
+      retrieval: {
+        query: trimmedQuestion.normalize("NFKC").trim(),
+        previousEvidenceUsed: retrieval.previousSourcesUsed,
+        candidates: retrieval.candidates.map((candidate) => ({
+          chunkId: candidate.chunk.id,
+          score: candidate.score,
+          matchedTerms: candidate.matchedTerms,
+          selected: selectedChunkIds.has(candidate.chunk.id),
+        })),
+        selectedChunkIds: [...selectedChunkIds],
+        selectedCharacters: sources.reduce(
+          (total, source) => total + source.text.length,
+          0,
+        ),
+        expansions: retrieval.expansions,
+      },
+      web: { attempted: false, resultCount: 0 },
+      timingsMs: { retrieval: elapsedMs(retrievalStartedAt) },
+    };
     const pendingTurn: ChatTurn = {
       id: crypto.randomUUID(),
       question: trimmedQuestion,
@@ -150,10 +192,12 @@ export function ChatPanel({
       sources,
       webResults: [],
       status: "streaming",
+      diagnostics,
     };
     const nextTurns = [...currentTurns, pendingTurn];
     const abortController = new AbortController();
     let streamedAnswer = "";
+    let errorStage: NonNullable<TurnDiagnostics["error"]>["stage"] = "web";
 
     abortControllerRef.current = abortController;
     setSessionTurns(nextTurns);
@@ -162,6 +206,9 @@ export function ChatPanel({
     setError(undefined);
 
     try {
+      const webStartedAt = performance.now();
+      diagnostics.web.attempted =
+        shouldSearchWeb(trimmedQuestion) && Boolean(storedTavilyApiKey.trim());
       const webResults =
         shouldSearchWeb(trimmedQuestion) && storedTavilyApiKey.trim()
           ? await searchWebViaRoute({
@@ -170,32 +217,66 @@ export function ChatPanel({
               signal: abortController.signal,
             })
           : [];
+      diagnostics.web.resultCount = webResults.length;
+      diagnostics.timingsMs.web = elapsedMs(webStartedAt);
       pendingTurn.webResults = webResults;
       setSessionTurns((current) =>
         (current ?? nextTurns).map((turn) =>
           turn.id === pendingTurn.id ? { ...turn, webResults } : turn,
         ),
       );
+      errorStage = "prompt";
+      const promptStartedAt = performance.now();
+      const selectedCatalog = selectCatalogForRequest(
+        librarySources,
+        sources,
+        retrievalMode,
+      );
+      const selectedHistory = currentTurns
+        .filter((turn) => turn.answer && turn.status !== "error")
+        .slice(-historyLimit)
+        .map((turn) => ({ question: turn.question, answer: turn.answer }));
       const messages = buildGroundedMessages({
         question: trimmedQuestion,
         sourceChunks: sources,
-        librarySources: selectCatalogForRequest(
-          librarySources,
-          sources,
-          retrievalMode,
-        ),
+        librarySources: selectedCatalog,
         runtimeModel: `${DEEPINFRA_MODEL} via DeepInfra`,
         webResults,
-        history: currentTurns
-          .filter((turn) => turn.answer && turn.status !== "error")
-          .slice(-historyLimit)
-          .map((turn) => ({ question: turn.question, answer: turn.answer })),
+        history: selectedHistory,
       });
+      const promptCharacters = messages.reduce(
+        (total, message) => total + message.content.length,
+        0,
+      );
+      diagnostics.context = {
+        catalogCharacters: selectedCatalog.reduce(
+          (total, source) => total + source.sourceTitle.length + source.sourcePath.length,
+          0,
+        ),
+        localEvidenceCharacters: diagnostics.retrieval.selectedCharacters,
+        webEvidenceCharacters: webResults.reduce(
+          (total, result) => total + result.title.length + result.url.length + result.content.length,
+          0,
+        ),
+        historyCharacters: selectedHistory.reduce(
+          (total, turn) => total + turn.question.length + turn.answer.length,
+          0,
+        ),
+        promptCharacters,
+        estimatedPromptTokens: estimateTokens(promptCharacters),
+        messageRoles: messages.map((message) => message.role),
+      };
+      diagnostics.timingsMs.promptAssembly = elapsedMs(promptStartedAt);
+      errorStage = "provider";
       const response = await streamDeepInfraChatCompletionViaRoute({
         settings,
         messages,
         signal: abortController.signal,
         onDelta(delta) {
+          if (diagnostics.timingsMs.timeToFirstToken === undefined) {
+            diagnostics.timingsMs.timeToFirstToken = elapsedMs(turnStartedAt);
+            errorStage = "stream";
+          }
           streamedAnswer += delta;
           setSessionTurns((current) =>
             (current ?? nextTurns).map((turn) =>
@@ -210,6 +291,10 @@ export function ChatPanel({
         ...pendingTurn,
         answer: repairAnswerCitations(response.content, sources, webResults),
         status: "complete",
+        diagnostics: {
+          ...diagnostics,
+          timingsMs: { ...diagnostics.timingsMs, total: elapsedMs(turnStartedAt) },
+        },
       };
       const completedTurns = [...currentTurns, completedTurn];
       setSessionTurns(completedTurns);
@@ -221,6 +306,10 @@ export function ChatPanel({
         : chatError instanceof Error
           ? chatError.message
           : "Could not complete the DeepInfra request.";
+      diagnostics.timingsMs.total = elapsedMs(turnStartedAt);
+      if (failureMessage) {
+        diagnostics.error = { stage: errorStage, message: failureMessage };
+      }
       const interruptedTurn: ChatTurn = {
         ...pendingTurn,
         answer: repairAnswerCitations(
@@ -230,6 +319,7 @@ export function ChatPanel({
         ),
         status: wasStopped ? "stopped" : "error",
         error: failureMessage,
+        diagnostics,
       };
       const interruptedTurns = [...currentTurns, interruptedTurn];
       setSessionTurns(interruptedTurns);
@@ -578,6 +668,7 @@ function writeStoredTurns(turns: ChatTurn[]) {
       webResults: turn.webResults,
       status: turn.status,
       error: turn.error,
+      diagnostics: turn.diagnostics,
     }));
   writeStorage(
     chatHistoryStorageKey,
@@ -665,6 +756,9 @@ function parseStoredTurns(value: string, sourceChunks: SourceChunk[]): ChatTurn[
         webResults: turn.webResults ?? [],
         status: turn.status,
         error: turn.error,
+        diagnostics: isTurnDiagnostics(turn.diagnostics)
+          ? turn.diagnostics
+          : createLegacyDiagnostics(turn.question),
       }));
   } catch {
     return [];
@@ -682,6 +776,7 @@ function isStoredChatTurn(value: unknown): value is StoredChatTurn {
     typeof turn.question === "string" &&
     typeof turn.answer === "string" &&
     (turn.error === undefined || typeof turn.error === "string") &&
+    (turn.diagnostics === undefined || isTurnDiagnostics(turn.diagnostics)) &&
     Array.isArray(turn.sourceIds) &&
     turn.sourceIds.every((sourceId) => typeof sourceId === "string") &&
     (turn.webResults === undefined ||
@@ -733,6 +828,15 @@ function formatChatDiagnosticExport(
       "",
       `Status: ${turn.status}`,
       ...(turn.error ? [`Error: ${turn.error}`] : []),
+      `Harness: ${turn.diagnostics.harnessVersion} (diagnostic schema v${turn.diagnostics.version})`,
+      `Route: deterministic / ${turn.diagnostics.route.retrievalMode} / web ${turn.diagnostics.route.webPolicy}`,
+      `Timing: ${JSON.stringify(turn.diagnostics.timingsMs)}`,
+      `Context: ${turn.diagnostics.context ? JSON.stringify(turn.diagnostics.context) : "(not recorded)"}`,
+      `Web: attempted=${turn.diagnostics.web.attempted}, results=${turn.diagnostics.web.resultCount}`,
+      `Adjacent expansions: ${turn.diagnostics.retrieval.expansions.length > 0 ? JSON.stringify(turn.diagnostics.retrieval.expansions) : "(none)"}`,
+      ...(turn.diagnostics.error
+        ? [`Error stage: ${turn.diagnostics.error.stage}`]
+        : []),
       "",
       "### User",
       "",
@@ -744,6 +848,20 @@ function formatChatDiagnosticExport(
       "",
       `### Retrieved source chunks (${turn.sources.length})`,
     );
+
+    lines.push(
+      "",
+      `### Retrieval candidates (${turn.diagnostics.retrieval.candidates.length})`,
+    );
+    if (turn.diagnostics.retrieval.candidates.length === 0) {
+      lines.push("", "(none)");
+    } else {
+      turn.diagnostics.retrieval.candidates.forEach((candidate) => {
+        lines.push(
+          `- ${candidate.chunkId} | score=${candidate.score ?? "n/a"} | selected=${candidate.selected} | terms=${candidate.matchedTerms.join(", ") || "(none)"}`,
+        );
+      });
+    }
 
     if (turn.sources.length === 0) {
       lines.push("", "(none)");
@@ -818,4 +936,59 @@ function selectCatalogForRequest(
       .filter((label): label is string => Boolean(label)),
   );
   return librarySources.filter((source) => sourceLabels.has(source.sourceLabel));
+}
+
+function elapsedMs(startedAt: number): number {
+  return Math.round((performance.now() - startedAt) * 10) / 10;
+}
+
+function isTurnDiagnostics(value: unknown): value is TurnDiagnostics {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const diagnostic = value as Partial<TurnDiagnostics>;
+  const route = diagnostic.route as Partial<TurnDiagnostics["route"]> | undefined;
+  const retrieval = diagnostic.retrieval as
+    | Partial<TurnDiagnostics["retrieval"]>
+    | undefined;
+  const web = diagnostic.web as Partial<TurnDiagnostics["web"]> | undefined;
+  return (
+    diagnostic.version === 1 &&
+    typeof diagnostic.harnessVersion === "string" &&
+    route?.kind === "deterministic" &&
+    (route.retrievalMode === "none" ||
+      route.retrievalMode === "catalog" ||
+      route.retrievalMode === "overview" ||
+      route.retrievalMode === "focused") &&
+    typeof retrieval?.query === "string" &&
+    Array.isArray(retrieval.candidates) &&
+    Array.isArray(retrieval.selectedChunkIds) &&
+    Array.isArray(retrieval.expansions) &&
+    typeof web?.attempted === "boolean" &&
+    typeof web.resultCount === "number" &&
+    Boolean(diagnostic.timingsMs)
+  );
+}
+
+function createLegacyDiagnostics(question: string): TurnDiagnostics {
+  return {
+    version: 1,
+    harnessVersion: "legacy-uninstrumented",
+    route: {
+      kind: "deterministic",
+      retrievalMode: getRetrievalMode(question),
+      webPolicy: "never",
+    },
+    retrieval: {
+      query: question.normalize("NFKC").trim(),
+      previousEvidenceUsed: false,
+      candidates: [],
+      selectedChunkIds: [],
+      selectedCharacters: 0,
+      expansions: [],
+    },
+    web: { attempted: false, resultCount: 0 },
+    timingsMs: {},
+  };
 }

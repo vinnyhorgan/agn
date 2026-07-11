@@ -1,5 +1,5 @@
 import { lexicalSearch } from "@/lib/search/lexicalSearch";
-import type { SourceChunk } from "@/lib/search/types";
+import type { SearchResult, SourceChunk } from "@/lib/search/types";
 
 const focusedChunkLimit = 8;
 const focusedCharacterBudget = 9_000;
@@ -30,6 +30,14 @@ const catalogPatterns = [
 
 export type RetrievalMode = "none" | "catalog" | "overview" | "focused";
 
+export interface SourceRetrievalResult {
+  mode: RetrievalMode;
+  chunks: SourceChunk[];
+  candidates: SearchResult[];
+  previousSourcesUsed: boolean;
+  expansions: Array<{ chunkId: string; reason: string }>;
+}
+
 export function retrieveSourceChunks({
   chunks,
   query,
@@ -39,30 +47,174 @@ export function retrieveSourceChunks({
   query: string;
   previousSources?: SourceChunk[];
 }): SourceChunk[] {
-  if (chunks.length === 0) {
-    return [];
-  }
+  return retrieveSourceChunksWithDiagnostics({
+    chunks,
+    query,
+    previousSources,
+  }).chunks;
+}
 
+export function retrieveSourceChunksWithDiagnostics({
+  chunks,
+  query,
+  previousSources = [],
+}: {
+  chunks: SourceChunk[];
+  query: string;
+  previousSources?: SourceChunk[];
+}): SourceRetrievalResult {
   const mode = getRetrievalMode(query);
 
+  if (chunks.length === 0) {
+    return { mode, chunks: [], candidates: [], previousSourcesUsed: false, expansions: [] };
+  }
+
   if (mode === "none" || mode === "catalog") {
-    return [];
+    return { mode, chunks: [], candidates: [], previousSourcesUsed: false, expansions: [] };
   }
 
   if (mode === "overview") {
-    return selectOverviewChunks(chunks);
+    return {
+      mode,
+      chunks: selectOverviewChunks(chunks),
+      candidates: [],
+      previousSourcesUsed: false,
+      expansions: [],
+    };
   }
 
-  const rankedChunks = lexicalSearch(chunks, query, Math.min(chunks.length, 80)).map(
-    (result) => result.chunk,
-  );
-  const contextualChunks = rankedChunks.length < 3 ? previousSources : [];
+  const exactReferenceChunks = resolveExactSlideReference(chunks, query);
+  if (exactReferenceChunks.length > 0) {
+    return {
+      mode,
+      chunks: exactReferenceChunks,
+      candidates: [],
+      previousSourcesUsed: false,
+      expansions: exactReferenceChunks.map((chunk) => ({
+        chunkId: chunk.id,
+        reason: "explicit source and slide reference",
+      })),
+    };
+  }
 
-  return selectSlideDiverseChunks(
+  const rawCandidates = lexicalSearch(chunks, query, Math.min(chunks.length, 80));
+  const candidates = applyRelevanceFloor(rawCandidates);
+  const rankedChunks = candidates.map((result) => result.chunk);
+  const contextualChunks = rankedChunks.length < 3 ? previousSources : [];
+  const focusedChunks = selectSlideDiverseChunks(
     [...rankedChunks, ...contextualChunks],
     focusedChunkLimit,
     focusedCharacterBudget,
   );
+  const expanded = expandAdjacentSlides(chunks, focusedChunks, query);
+  const selectedChunks = selectSlideDiverseChunks(
+    [...focusedChunks, ...expanded.map((item) => item.chunk)],
+    focusedChunkLimit,
+    focusedCharacterBudget,
+  );
+
+  return {
+    mode,
+    chunks: selectedChunks,
+    candidates,
+    previousSourcesUsed: contextualChunks.some((chunk) =>
+      selectedChunks.some((selected) => selected.id === chunk.id),
+    ),
+    expansions: expanded
+      .filter((item) => selectedChunks.some((chunk) => chunk.id === item.chunk.id))
+      .map((item) => ({ chunkId: item.chunk.id, reason: item.reason })),
+  };
+}
+
+function applyRelevanceFloor(results: SearchResult[]): SearchResult[] {
+  const topScore = results[0]?.score;
+  if (topScore === undefined) {
+    return [];
+  }
+
+  const floor = topScore * 0.12;
+  return results.filter((result) => result.score >= floor);
+}
+
+function resolveExactSlideReference(chunks: SourceChunk[], query: string): SourceChunk[] {
+  const normalized = query.normalize("NFKC");
+  const sourceThenSlide = normalized.match(
+    /\b(?:source|fonte)\s*(\d+)\b[^\d]{0,40}\bslide\s*(\d+)\b/i,
+  );
+  const slideThenSource = normalized.match(
+    /\bslide\s*(\d+)\b[^\d]{0,40}\b(?:source|fonte)\s*(\d+)\b/i,
+  );
+  const sourceNumber = Number(sourceThenSlide?.[1] ?? slideThenSource?.[2]);
+  const slideNumber = Number(sourceThenSlide?.[2] ?? slideThenSource?.[1]);
+
+  if (!Number.isInteger(sourceNumber) || !Number.isInteger(slideNumber)) {
+    return [];
+  }
+
+  return chunks.filter(
+    (chunk) =>
+      chunk.sourceLabel === `Source ${sourceNumber}` &&
+      chunk.sourceSlideNumber === slideNumber,
+  );
+}
+
+function expandAdjacentSlides(
+  allChunks: SourceChunk[],
+  selected: SourceChunk[],
+  query: string,
+): Array<{ chunk: SourceChunk; reason: string }> {
+  const walkthroughRequested =
+    /\b(?:walkthrough|walk me through|step by step|derive|derivation|spiega passo passo)\b/i.test(
+      query,
+    );
+  const selectedIds = new Set(selected.map((chunk) => chunk.id));
+  const expansions = new Map<string, { chunk: SourceChunk; reason: string }>();
+
+  for (const anchor of selected.slice(0, 3)) {
+    for (const direction of [-1, 1] as const) {
+      const adjacent = allChunks.find(
+        (chunk) =>
+          chunk.deckId === anchor.deckId &&
+          chunk.slideNumber === anchor.slideNumber + direction,
+      );
+      if (!adjacent || selectedIds.has(adjacent.id)) {
+        continue;
+      }
+
+      const sharedTitle =
+        normalizeContinuationTitle(anchor.slideTitle) !== "" &&
+        normalizeContinuationTitle(anchor.slideTitle) ===
+          normalizeContinuationTitle(adjacent.slideTitle);
+      const continuation =
+        hasContinuationMarker(anchor.slideTitle) ||
+        hasContinuationMarker(adjacent.slideTitle);
+      if (!walkthroughRequested && !sharedTitle && !continuation) {
+        continue;
+      }
+
+      expansions.set(adjacent.id, {
+        chunk: adjacent,
+        reason: walkthroughRequested
+          ? `adjacent slide for requested walkthrough (${direction < 0 ? "previous" : "next"})`
+          : "adjacent slide with a shared or continuation title",
+      });
+    }
+  }
+
+  return [...expansions.values()];
+}
+
+function normalizeContinuationTitle(title: string | undefined): string {
+  return (title ?? "")
+    .normalize("NFKC")
+    .toLocaleLowerCase()
+    .replace(/\b(?:continued|continuation|cont\.?|parte|part)\s*\d*\b/g, "")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+}
+
+function hasContinuationMarker(title: string | undefined): boolean {
+  return /\b(?:continued|continuation|cont\.?|parte|part)\s*\d*\b/i.test(title ?? "");
 }
 
 export function isOverviewQuery(query: string): boolean {
